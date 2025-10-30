@@ -651,7 +651,7 @@ svc:
       minCount: 1
       osDiskSizeGB: 32
       poolCount: 1
-      vmSize: Standard_D2s_v3
+      vmSize: Standard_B2s
       zoneRedundantMode: Auto
       zones: ""
     kubernetesVersion: 1.32.5
@@ -665,7 +665,7 @@ svc:
       minCount: 1
       osDiskSizeGB: 32
       poolCount: 1
-      vmSize: Standard_D2s_v3
+      vmSize: Standard_B2s
       zoneRedundantMode: Auto
       zones: ""
     userAgentPool:
@@ -673,7 +673,7 @@ svc:
       minCount: 1
       osDiskSizeGB: 32
       poolCount: 3
-      vmSize: Standard_D2s_v3
+      vmSize: Standard_B2s
       zoneRedundantMode: Auto
       zones: ""
     vnetAddressPrefix: 10.128.0.0/14

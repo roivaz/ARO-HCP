@@ -290,7 +290,7 @@ defaults:
       systemAgentPool:
         minCount: 1
         maxCount: 3
-        vmSize: 'Standard_D2s_v3'
+        vmSize: 'Standard_B2s'
         osDiskSizeGB: 32
         poolCount: 3
         zones: ""
@@ -298,7 +298,7 @@ defaults:
       userAgentPool:
         minCount: 1
         maxCount: 3
-        vmSize: 'Standard_D2s_v3'
+        vmSize: 'Standard_B2s'
         osDiskSizeGB: 32
         poolCount: 3
         zones: ""
@@ -306,7 +306,7 @@ defaults:
       infraAgentPool:
         minCount: 1
         maxCount: 3
-        vmSize: 'Standard_D2s_v3'
+        vmSize: 'Standard_B2s'
         osDiskSizeGB: 32
         poolCount: 2
         zones: ""
