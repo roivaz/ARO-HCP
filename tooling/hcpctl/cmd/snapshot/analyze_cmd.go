@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	copilot "github.com/github/copilot-sdk/go"
 	"github.com/go-logr/logr"
@@ -83,6 +84,7 @@ func bindAnalyzeOptions(opts *RawAnalyzeOptions, cmd *cobra.Command) error {
 
 type validatedAnalyzeOptions struct {
 	dataDir       string
+	testDirs      []string // populated when dataDir is a job-level directory (batch mode)
 	worktreePaths map[string]string
 	reviewRounds  int
 	maxRounds     int
@@ -95,10 +97,28 @@ func (o *RawAnalyzeOptions) validate() (*validatedAnalyzeOptions, error) {
 		return nil, fmt.Errorf("data-dir argument is required")
 	}
 
-	// Verify data directory exists and contains a manifest.
+	// Detect whether this is a single-test directory (has manifest.json)
+	// or a job-level directory (subdirectories with manifest.json).
+	var testDirs []string
 	manifestPath := filepath.Join(o.DataDir, "manifest.json")
 	if _, err := os.Stat(manifestPath); err != nil {
-		return nil, fmt.Errorf("data directory %q does not contain manifest.json: %w", o.DataDir, err)
+		// No manifest.json at the top level — scan for subdirectories containing one.
+		entries, dirErr := os.ReadDir(o.DataDir)
+		if dirErr != nil {
+			return nil, fmt.Errorf("cannot read data directory %q: %w", o.DataDir, dirErr)
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			subManifest := filepath.Join(o.DataDir, entry.Name(), "manifest.json")
+			if _, statErr := os.Stat(subManifest); statErr == nil {
+				testDirs = append(testDirs, filepath.Join(o.DataDir, entry.Name()))
+			}
+		}
+		if len(testDirs) == 0 {
+			return nil, fmt.Errorf("data directory %q does not contain manifest.json and has no subdirectories with manifest.json", o.DataDir)
+		}
 	}
 
 	// Verify all worktree paths exist.
@@ -165,6 +185,7 @@ func (o *RawAnalyzeOptions) validate() (*validatedAnalyzeOptions, error) {
 
 	return &validatedAnalyzeOptions{
 		dataDir:       o.DataDir,
+		testDirs:      testDirs,
 		worktreePaths: worktreePaths,
 		reviewRounds:  o.ReviewRounds,
 		maxRounds:     o.MaxRounds,
@@ -174,10 +195,133 @@ func (o *RawAnalyzeOptions) validate() (*validatedAnalyzeOptions, error) {
 }
 
 func (o *validatedAnalyzeOptions) run(ctx context.Context) error {
+	if len(o.testDirs) > 0 {
+		return o.runBatch(ctx)
+	}
+	return o.runSingle(ctx, o.dataDir, o.outputDir)
+}
+
+func (o *validatedAnalyzeOptions) runBatch(ctx context.Context) error {
+	logger := logr.FromContextOrDiscard(ctx)
+	total := len(o.testDirs)
+
+	logger.Info("Batch mode: analyzing all tests in directory", "dir", o.dataDir, "tests", total)
+
+	results := make([]testResult, 0, total)
+
+	for i, testDir := range o.testDirs {
+		if ctx.Err() != nil {
+			break
+		}
+
+		testName := filepath.Base(testDir)
+		logger.Info(fmt.Sprintf("[%d/%d] Analyzing test", i+1, total), "test", testName)
+
+		testOutputDir := testDir
+		if o.outputDir != o.dataDir {
+			testOutputDir = filepath.Join(o.outputDir, testName)
+		}
+
+		err := o.runSingle(ctx, testDir, testOutputDir)
+
+		tr := testResult{testName: testName, dir: testOutputDir, err: err}
+		if err == nil {
+			// Read back the analysis to extract root cause and summary for the job-level summary.
+			analysisPath := filepath.Join(testOutputDir, "analysis.json")
+			if data, readErr := os.ReadFile(analysisPath); readErr == nil {
+				var chain agent.HydratedChain
+				if jsonErr := json.Unmarshal(data, &chain); jsonErr == nil {
+					tr.rootCause = chain.RootCause
+					tr.summary = chain.Summary
+				}
+			}
+		}
+		results = append(results, tr)
+
+		if err != nil {
+			logger.Error(err, "Analysis failed for test, continuing", "test", testName)
+		} else {
+			logger.Info(fmt.Sprintf("[%d/%d] Analysis complete", i+1, total), "test", testName)
+		}
+	}
+
+	// Write job-level summary.
+	summaryPath := filepath.Join(o.outputDir, "summary.md")
+	summary := renderBatchSummary(results)
+	if err := os.MkdirAll(o.outputDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+	if err := os.WriteFile(summaryPath, []byte(summary), 0o644); err != nil {
+		return fmt.Errorf("failed to write summary.md: %w", err)
+	}
+
+	succeeded := 0
+	failed := 0
+	for _, r := range results {
+		if r.err == nil {
+			succeeded++
+		} else {
+			failed++
+		}
+	}
+	logger.Info("Batch analysis complete",
+		"total", total,
+		"succeeded", succeeded,
+		"failed", failed,
+		"summary", summaryPath,
+	)
+	return nil
+}
+
+// testResult holds the outcome of a single test analysis in batch mode.
+type testResult struct {
+	testName  string
+	dir       string
+	rootCause string
+	summary   string
+	err       error
+}
+
+func renderBatchSummary(results []testResult) string {
+	var sb strings.Builder
+	sb.WriteString("# Job Analysis Summary\n\n")
+
+	analyzed := 0
+	errored := 0
+	for _, r := range results {
+		if r.err != nil {
+			errored++
+		} else {
+			analyzed++
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("**Total tests:** %d | **Analyzed:** %d | **Analysis errors:** %d\n\n",
+		len(results), analyzed, errored))
+
+	sb.WriteString("## Per-Test Results\n\n")
+	for _, r := range results {
+		if r.err != nil {
+			sb.WriteString(fmt.Sprintf("### %s\n\n**Status:** Analysis error\n\n```\n%s\n```\n\n", r.testName, r.err.Error()))
+		} else {
+			sb.WriteString(fmt.Sprintf("### %s\n\n", r.testName))
+			if r.rootCause != "" {
+				sb.WriteString(fmt.Sprintf("**Root Cause:** %s\n\n", r.rootCause))
+			}
+			if r.summary != "" {
+				sb.WriteString(fmt.Sprintf("%s\n\n", r.summary))
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+func (o *validatedAnalyzeOptions) runSingle(ctx context.Context, dataDir, outputDir string) error {
 	logger := logr.FromContextOrDiscard(ctx)
 
 	// Read manifest.
-	manifestData, err := os.ReadFile(filepath.Join(o.dataDir, "manifest.json"))
+	manifestData, err := os.ReadFile(filepath.Join(dataDir, "manifest.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read manifest: %w", err)
 	}
@@ -186,9 +330,9 @@ func (o *validatedAnalyzeOptions) run(ctx context.Context) error {
 		return fmt.Errorf("failed to parse manifest: %w", err)
 	}
 
-	testError := readFileOrEmpty(filepath.Join(o.dataDir, "test_logs", "error.log"))
-	testOutput := readFileOrEmpty(filepath.Join(o.dataDir, "test_logs", "output.log"))
-	siblingTests := readFileOrEmpty(filepath.Join(o.dataDir, "sibling_tests.json"))
+	testError := readFileOrEmpty(filepath.Join(dataDir, "test_logs", "error.log"))
+	testOutput := readFileOrEmpty(filepath.Join(dataDir, "test_logs", "output.log"))
+	siblingTests := readFileOrEmpty(filepath.Join(dataDir, "sibling_tests.json"))
 
 	// Create Azure credential for Kusto access.
 	cred, err := azidentity.NewDefaultAzureCredential(&azidentity.DefaultAzureCredentialOptions{
@@ -219,7 +363,7 @@ func (o *validatedAnalyzeOptions) run(ctx context.Context) error {
 	}
 
 	// Set up workspace with symlinks in a temp directory.
-	workspaceDir, cleanup, err := setupAnalysisWorkspace(o.dataDir, o.worktreePaths)
+	workspaceDir, cleanup, err := setupAnalysisWorkspace(dataDir, o.worktreePaths)
 	if err != nil {
 		return fmt.Errorf("failed to set up analysis workspace: %w", err)
 	}
@@ -245,7 +389,7 @@ func (o *validatedAnalyzeOptions) run(ctx context.Context) error {
 	}
 	var analysisErr error
 	defer func() {
-		session.SaveConversation(filepath.Join(o.outputDir, "conversation.json"))
+		session.SaveConversation(filepath.Join(outputDir, "conversation.json"))
 		if analysisErr == nil {
 			if err := session.Delete(ctx); err != nil {
 				logger.Error(err, "Failed to delete Copilot session.")
@@ -263,7 +407,7 @@ func (o *validatedAnalyzeOptions) run(ctx context.Context) error {
 		TestError:           testError,
 		TestOutput:          testOutput,
 		SiblingTests:        siblingTests,
-		DataDir:             o.dataDir,
+		DataDir:             dataDir,
 		WorktreePaths:       o.worktreePaths,
 		KustoCluster:        manifest.KustoCluster,
 		KustoDatabase:       manifest.KustoDatabase,
@@ -276,9 +420,8 @@ func (o *validatedAnalyzeOptions) run(ctx context.Context) error {
 	}
 	hydratedChain := result.HydratedChain
 
-	// Phase 5: Write output.
-	logger.Info("Phase 5: Writing output.")
-	if err := os.MkdirAll(o.outputDir, 0o755); err != nil {
+	// Write output.
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		analysisErr = fmt.Errorf("failed to create output directory: %w", err)
 		return analysisErr
 	}
@@ -288,21 +431,21 @@ func (o *validatedAnalyzeOptions) run(ctx context.Context) error {
 		analysisErr = fmt.Errorf("failed to marshal analysis: %w", err)
 		return analysisErr
 	}
-	if err := os.WriteFile(filepath.Join(o.outputDir, "analysis.json"), analysisJSON, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(outputDir, "analysis.json"), analysisJSON, 0o644); err != nil {
 		analysisErr = fmt.Errorf("failed to write analysis.json: %w", err)
 		return analysisErr
 	}
 
 	rendered := agent.RenderMarkdown(hydratedChain, manifest.TestName)
-	if err := os.WriteFile(filepath.Join(o.outputDir, "analysis.md"), []byte(rendered), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(outputDir, "analysis.md"), []byte(rendered), 0o644); err != nil {
 		analysisErr = fmt.Errorf("failed to write analysis.md: %w", err)
 		return analysisErr
 	}
 
 	logger.Info("Analysis complete.",
-		"outputDir", o.outputDir,
-		"analysisJSON", filepath.Join(o.outputDir, "analysis.json"),
-		"analysisMarkdown", filepath.Join(o.outputDir, "analysis.md"),
+		"outputDir", outputDir,
+		"analysisJSON", filepath.Join(outputDir, "analysis.json"),
+		"analysisMarkdown", filepath.Join(outputDir, "analysis.md"),
 	)
 
 	return nil
@@ -376,13 +519,29 @@ func newAnalyzeCommand() (*cobra.Command, error) {
 The agent examines the manifest, test logs, and Kusto query results,
 then iteratively refines its analysis through validation and review rounds.
 
+Supports two modes based on the directory structure:
+  - Single-test mode: point to a directory containing manifest.json
+  - Batch mode: point to a job-level directory whose subdirectories each
+    contain manifest.json (the output of "from-prow-job")
+
+In batch mode, each test is analyzed sequentially and a summary.md is
+written at the top level aggregating root causes across all tests.
+Failures in individual test analyses do not abort the batch.
+
 Requires a logged-in GitHub Copilot CLI session (gh auth login).
 
 The four repository flags point to local git checkouts at the commits
 that were deployed when the test ran. The agent uses these to read
 source code for evidence in its causal chain.`,
-		Example: `  # Analyze a gathered snapshot
+		Example: `  # Analyze a single test snapshot
   hcpctl snapshot analyze ./snapshot-20250101-120000/periodic-ci-.../12345/TestFoo \
+    --aro-hcp ~/code/ARO-HCP \
+    --hypershift ~/code/hypershift \
+    --maestro ~/code/maestro \
+    --clusters-service ~/code/clusters-service
+
+  # Analyze all failed tests from a job run (batch mode)
+  hcpctl snapshot analyze ./snapshot-20250101-120000/periodic-ci-.../12345/ \
     --aro-hcp ~/code/ARO-HCP \
     --hypershift ~/code/hypershift \
     --maestro ~/code/maestro \
