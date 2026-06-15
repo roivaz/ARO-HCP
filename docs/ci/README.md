@@ -46,15 +46,10 @@ ARO HCP CI is split across this repository and the OpenShift CI configuration in
 - [Operator Entry Points](dev-ci-topology.md#operator-entry-points)
 - [Where To Look](dev-ci-topology.md#where-to-look)
 
-### [DEV E2E Subscription Onboarding](dev-e2e-subscription-onboarding.md)
+### [E2E Subscription Onboarding](e2e-subscription-onboarding.md)
 
-- [What This Onboarding Touches](dev-e2e-subscription-onboarding.md#what-this-onboarding-touches)
-- [Current Model](dev-e2e-subscription-onboarding.md#current-model)
-- [Existing-Assignment Caveat](dev-e2e-subscription-onboarding.md#existing-assignment-caveat)
-- [Shared Bootstrap Identities](dev-e2e-subscription-onboarding.md#shared-bootstrap-identities)
-- [Procedure](dev-e2e-subscription-onboarding.md#procedure)
-- [What Usually Does Not Change](dev-e2e-subscription-onboarding.md#what-usually-does-not-change)
-- [Where To Look](dev-e2e-subscription-onboarding.md#where-to-look)
+- [DEV E2E Subscription Onboarding](e2e-subscription-onboarding.md#dev-e2e-subscription-onboarding)
+- [INT/STG/PROD E2E Subscription Onboarding](e2e-subscription-onboarding.md#intstgprod-e2e-subscription-onboarding)
 
 ### [CI Image Lifecycle](image-lifecycle.md)
 
@@ -170,7 +165,7 @@ ARO HCP CI is split across this repository and the OpenShift CI configuration in
 
 - [CI Execution](execution.md) explains how CI works, what each execution mode validates, and how requests flow across tenants and subscriptions.
 - [Dev-CI Topology](dev-ci-topology.md) explains what the standalone `dev-ci` rollout owns today, how it relates to on-demand DEV CI, and where the remaining mixed-management boundary still sits.
-- [DEV E2E Subscription Onboarding](dev-e2e-subscription-onboarding.md) documents the end-to-end procedure for adding another DEV customer subscription, including slot catalog, Boskos, cluster-profile inventory, and bootstrap RBAC updates.
+- [E2E Subscription Onboarding](e2e-subscription-onboarding.md) documents the end-to-end procedure for adding customer subscriptions across all environments (DEV, INT, STG, PROD), including slot catalog, Boskos, AFEC flags, and RBAC updates.
 - [CI Image Lifecycle](image-lifecycle.md) explains the shared CI build root, job-local image graph, local E2E image injection, and the difference between CI promotion and ACR mirroring.
 - [CI Identity Leasing](identity-leasing.md) explains the managed identity container pool, the MSI mock SP pool, and the current staged model: slot-manager for DEV `e2e-parallel`, legacy ci-operator identity-container leases elsewhere.
 - [CI Quota Monitoring](quota-monitoring.md) explains how Azure quotas that constrain CI are monitored and where to check current usage.

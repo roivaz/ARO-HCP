@@ -1,10 +1,19 @@
-# DEV E2E Subscription Onboarding
+# E2E Subscription Onboarding
 
-This document covers the current procedure for adding another customer subscription to the DEV E2E slot fleet.
+This document covers the procedure for onboarding new customer subscriptions for E2E testing across all environments.
 
-Today the canonical DEV slot inventory lives in `test/e2e-config/e2e-slots.yaml`, where the `dev` slot environment is consumed by the `prow` and `ci01` deploy environments. This onboarding flow is DEV-specific; INT, STG, and PROD use different access models.
+- [DEV](#dev-e2e-subscription-onboarding) — no ARM integration; onboarding is CI-infrastructure-only
+- [INT / STG / PROD](#intstgprod-e2e-subscription-onboarding) — ARM-integrated environments; requires AFEC flag registration plus CI infrastructure changes
 
-## What This Onboarding Touches
+---
+
+## DEV E2E Subscription Onboarding
+
+This section covers the procedure for adding another customer subscription to the DEV E2E slot fleet.
+
+Today the canonical DEV slot inventory lives in `test/e2e-config/e2e-slots.yaml`, where the `dev` slot environment is consumed by the `prow` and `ci01` deploy environments.
+
+### What This Onboarding Touches
 
 Adding a new DEV customer subscription spans seven different inventories:
 
@@ -18,7 +27,7 @@ Adding a new DEV customer subscription spans seven different inventories:
 
 It is not just a slot-catalog change.
 
-## Current Model
+### Current Model
 
 The current implementation is split across two layers:
 
@@ -31,13 +40,13 @@ The current implementation is split across two layers:
 
 The bootstrap layer is about the shared dev identities used by the DEV services and by local E2E provisioning, not the per-cluster managed identities created for a specific HCP during a test run.
 
-## Existing-Assignment Caveat
+### Existing-Assignment Caveat
 
 The `ci.dev.e2eSubscriptions` list in `config/config-dev-ci.yaml` now fans out into the three `dev-ci` RBAC parameter templates, so adding a brand-new third DEV customer subscription no longer requires per-index template edits first.
 
 A separate caveat still applies when you are adopting pre-existing role assignments instead of creating fresh ones: `legacyAssignmentIdsBySubscription` in `dev-infrastructure/configurations/e2e-subscription-rbac-assignments.tmpl.bicepparam` must contain the Azure-generated assignment IDs for any subscription whose existing grants need to be adopted in place. A brand-new subscription normally does not need that map.
 
-## Shared Bootstrap Identities
+### Shared Bootstrap Identities
 
 The DEV bootstrap layer currently grants access for these shared identities:
 
@@ -48,7 +57,7 @@ The DEV bootstrap layer currently grants access for these shared identities:
 
 For the current mixed-management model of the pooled MSI mock identities, see [CI Identity Leasing](identity-leasing.md).
 
-## Procedure
+### Procedure
 
 1. Add the new pool to `test/e2e-config/e2e-slots.yaml`.
    - Pick the next shard number and a unique `resource_type`.
@@ -109,7 +118,7 @@ For the current mixed-management model of the pooled MSI mock identities, see [C
    - Verify customer-resource creation in the new subscription succeeds without Azure `AuthorizationFailed` errors.
    - Verify release and cleanup still return the leased slot correctly.
 
-## What Usually Does Not Change
+### What Usually Does Not Change
 
 Adding a new DEV customer subscription normally does not require:
 
@@ -119,7 +128,7 @@ Adding a new DEV customer subscription normally does not require:
 
 Those steps only become necessary if the shared identities or the Boskos-backed MSI mock pool itself changes.
 
-## Where To Look
+### Where To Look
 
 - `test/e2e-config/e2e-slots.yaml`
 - `test/cmd/aro-hcp-tests/slot-manager/DESIGN.md`
@@ -138,9 +147,89 @@ Those steps only become necessary if the shared identities or the Boskos-backed 
 - [CI Quota Monitoring](quota-monitoring.md)
 - [CI Cleanup](cleanup.md)
 
+---
+
+## INT/STG/PROD E2E Subscription Onboarding
+
+INT, STG, and PROD are ARM-integrated environments. Each runs its own RP instance, and ARM routes `Microsoft.RedHatOpenShift` API calls to the correct RP based on AFEC (Azure Feature Exposure Control) flags registered on the customer subscription. Without the correct flags, API calls from a subscription will not reach the intended RP.
+
+Onboarding a new E2E testing subscription requires two steps: registering the AFEC flags so ARM routes traffic to the correct RP, and setting up the CI infrastructure (service principal, Boskos slots, cleanup jobs).
+
+### ARM Routing Flags
+
+| AFEC Flag | Routes to |
+| :-------- | :-------- |
+| `HcpPrivatePreview` | Prod RP in GA regions (uksouth, switzerlandnorth, canadacentral, etc.) |
+| `STAGING-APPROVED` | STG RP (uksouthstaging) |
+| `INT-APPROVED` | INT RP (uksouth azure-test.net) |
+| `InProgress` | EUAP/canary regions (centraluseuap, eastus2euap) + disabled future regions (westus, westus2) |
+
+### Required AFEC Flags per Environment
+
+| Environment | Required AFEC Flags |
+| :---------- | :------------------ |
+| INT         | `Microsoft.RedHatOpenShift/INT-APPROVED`, `Microsoft.RedHatOpenShift/ExperimentalReleaseFeatures` |
+| STG         | `Microsoft.RedHatOpenShift/STAGING-APPROVED`, `Microsoft.RedHatOpenShift/ExperimentalReleaseFeatures` |
+| PROD        | `Microsoft.RedHatOpenShift/HcpPrivatePreview`, `Microsoft.RedHatOpenShift/InProgress`, `Microsoft.RedHatOpenShift/ExperimentalReleaseFeatures` |
+
+The routing flag controls which RP instance ARM sends requests to. `ExperimentalReleaseFeatures` gates experimental features used by E2E tests (non-stable channel groups, single-replica control planes, etc.). PROD additionally requires `InProgress` to enable EUAP/canary region access.
+
+### Step 1: Register AFEC Flags
+
+AFEC registration is a two-step process: first initiate the registration from the customer subscription, then approve it via a Geneva Action.
+
+1. **Initiate registration** from the subscription's tenant. Run `az feature register` for each required flag:
+   ```bash
+   az feature register --namespace Microsoft.RedHatOpenShift --name <flag-name> \
+     --subscription <subscription-id>
+   ```
+   For example, for STG:
+   ```bash
+   az feature register --namespace Microsoft.RedHatOpenShift --name STAGING-APPROVED \
+     --subscription <subscription-id>
+   az feature register --namespace Microsoft.RedHatOpenShift --name ExperimentalReleaseFeatures \
+     --subscription <subscription-id>
+   ```
+   This puts the features into `Registering` state.
+
+2. **Request JIT access** (in Teams):
+   - Resource type: `acis`
+   - ARO → `PlatformServiceAdministrator`
+
+3. **Approve the registration** via Geneva Actions:
+   - Azure Resource Manager → Feature Management → Approve Feature Registration
+   - Namespace: `Microsoft.RedHatOpenShift`
+   - Feature Names: all flags initiated in step 1 that are in "Pending" status
+   - Subscription: the subscription ID to onboard
+
+4. **Verify** (from the subscription's tenant):
+   ```bash
+   az feature list --namespace Microsoft.RedHatOpenShift -o table \
+     --subscription <subscription-id>
+   ```
+   All flags should show `Registered`.
+
+> [!NOTE]
+> Step 1 can be performed by anyone with write access to the subscription. Steps 2-3 require Microsoft PlatformServiceAdministrator access.
+
+### Step 2: CI Infrastructure Setup
+
+1. Add the subscription to `config/config-dev-ci.yaml` under the appropriate `ci.<env>.e2eSubscriptions` section.
+
+2. Run the `Microsoft.Azure.ARO.HCP.DevCI.E2ESubscriptionRBAC` pipeline to grant the environment's CI bot (e.g. `OpenShift Release Bot - STG`) the required RBAC on the new subscription.
+
+3. Add the pool to `test/e2e-config/e2e-slots.yaml` under the environment's `pools` list.
+
+4. Sync the Boskos inventory and update CI job configs in `openshift/release` (slot catalog, cleanup jobs, `make update`).
+
+5. Update the Vault cluster profile secret (e.g. `kv/selfservice/hcm-aro/aro-hcp-<env>-rh`) with the new subscription's `customer-shard0-subscription-name` and `customer-shard0-subscription-id`.
+
+6. Validate by running a rehearsal E2E job against the new subscription.
+
 ## See Also
 
 - [CI Overview](README.md)
 - [Dev-CI Topology](dev-ci-topology.md)
 - [CI Identity Leasing](identity-leasing.md)
 - [CI Operations](operations.md)
+- [Environments](../environments.md)
