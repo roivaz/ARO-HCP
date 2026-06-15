@@ -44,23 +44,71 @@ import (
 
 const (
 	gcsBucket          = "test-platform-results"
-	prConfigPath       = "aro-hcp-provision-environment/artifacts/config.yaml"
+	localConfigPath    = "aro-hcp-provision-environment/artifacts/config.yaml"
+	writeConfigPath    = "aro-hcp-write-config/artifacts/config.yaml"
 	testStepPersistent = "aro-hcp-test-persistent"
 	testStepLocal      = "aro-hcp-test-local"
 )
 
+// JobKind categorizes Prow jobs by their execution workflow.
+type JobKind int
+
+const (
+	// JobKindLocalE2E is the DEV PR workflow that provisions an on-demand environment.
+	// Uses aro-hcp-local-e2e workflow with aro-hcp-provision-environment and aro-hcp-test-local.
+	JobKindLocalE2E JobKind = iota
+
+	// JobKindPersistentE2E covers all persistent-environment runs: PR-triggered
+	// presubmits (stage/int/prod), periodics, and rehearsals of any of these.
+	// Uses aro-hcp-persistent-e2e workflow with aro-hcp-write-config and aro-hcp-test-persistent.
+	JobKindPersistentE2E
+
+	// JobKindEV2Gated covers EV2-triggered postsubmit jobs that carry ev2.rollout/*
+	// annotations and can resolve config from the sdp-pipelines repo.
+	// Uses aro-hcp-persistent-e2e or aro-hcp-e2e workflow with aro-hcp-test-persistent.
+	JobKindEV2Gated
+)
+
 // ProwJobInfo holds the parsed information from a Prow job URL.
 type ProwJobInfo struct {
-	URL       string
-	JobName   string
-	ProwID    string
-	GCSPrefix string
+	URL              string
+	JobName          string // full job name as it appears in GCS (may include rehearsal prefix)
+	CanonicalJobName string // job name with rehearsal prefix stripped, used for classification
+	ProwID           string
+	GCSPrefix        string
 }
 
-// IsPullRequest reports whether the job is a pull-ci (PR) job,
-// determined by the job name prefix.
-func (p *ProwJobInfo) IsPullRequest() bool {
-	return strings.HasPrefix(p.JobName, "pull-ci")
+// IsRehearsal reports whether the job is a pj-rehearse wrapper around another job.
+func (p *ProwJobInfo) IsRehearsal() bool {
+	return p.JobName != p.CanonicalJobName
+}
+
+// Kind classifies the job by its execution workflow.
+func (p *ProwJobInfo) Kind() JobKind {
+	name := p.CanonicalJobName
+	if strings.HasPrefix(name, "branch-ci") {
+		return JobKindEV2Gated
+	}
+	// The DEV local-e2e job has "aro-hcp-e2e-parallel" as its test name.
+	// Persistent-env jobs use names like "stage-e2e-parallel", "integration-e2e-parallel", "prod-e2e-parallel".
+	if strings.HasSuffix(name, "aro-hcp-e2e-parallel") {
+		return JobKindLocalE2E
+	}
+	return JobKindPersistentE2E
+}
+
+// stripRehearsalPrefix removes the "rehearse-<PR#>-" prefix that the
+// pj-rehearse plugin prepends to rehearsed job names.
+func stripRehearsalPrefix(jobName string) string {
+	if !strings.HasPrefix(jobName, "rehearse-") {
+		return jobName
+	}
+	rest := strings.TrimPrefix(jobName, "rehearse-")
+	idx := strings.Index(rest, "-")
+	if idx < 0 {
+		return jobName
+	}
+	return rest[idx+1:]
 }
 
 // ProwJobConfig holds the Kusto connection info extracted from a Prow job's config.yaml.
@@ -182,11 +230,13 @@ func ParseProwURL(rawURL string) (*ProwJobInfo, error) {
 			if _, err := strconv.ParseUint(prowID, 10, 64); err != nil {
 				return nil, fmt.Errorf("prow ID %q is not a valid number", prowID)
 			}
+			jobName := segments[i+4]
 			return &ProwJobInfo{
-				URL:       rawURL,
-				JobName:   segments[i+4],
-				ProwID:    prowID,
-				GCSPrefix: strings.Join(segments[i:i+6], "/"),
+				URL:              rawURL,
+				JobName:          jobName,
+				CanonicalJobName: stripRehearsalPrefix(jobName),
+				ProwID:           prowID,
+				GCSPrefix:        strings.Join(segments[i:i+6], "/"),
 			}, nil
 		}
 		if seg == "logs" {
@@ -197,11 +247,13 @@ func ParseProwURL(rawURL string) (*ProwJobInfo, error) {
 			if _, err := strconv.ParseUint(prowID, 10, 64); err != nil {
 				return nil, fmt.Errorf("prow ID %q is not a valid number", prowID)
 			}
+			jobName := segments[i+1]
 			return &ProwJobInfo{
-				URL:       rawURL,
-				JobName:   segments[i+1],
-				ProwID:    prowID,
-				GCSPrefix: strings.Join(segments[i:i+3], "/"),
+				URL:              rawURL,
+				JobName:          jobName,
+				CanonicalJobName: stripRehearsalPrefix(jobName),
+				ProwID:           prowID,
+				GCSPrefix:        strings.Join(segments[i:i+3], "/"),
 			}, nil
 		}
 	}
@@ -210,22 +262,36 @@ func ParseProwURL(rawURL string) (*ProwJobInfo, error) {
 }
 
 // FetchProwJobConfig resolves the Kusto connection configuration for a Prow job.
-// For PR jobs, it downloads the config from the aro-hcp-provision-environment GCS artifact.
-// For non-PR (EV2-triggered) jobs, it downloads prowjob.json from GCS to extract
-// ev2.rollout/* annotations, then reads the rendered config from the sdp-pipelines
-// repo at the annotated commit SHA.
+//
+// For local-e2e (DEV) jobs, it downloads config from the aro-hcp-provision-environment
+// GCS artifact. For persistent-e2e jobs (PR, periodic, rehearsal), it downloads config
+// from the aro-hcp-write-config GCS artifact. For EV2-gated jobs, it first tries the
+// aro-hcp-write-config artifact and falls back to prowjob.json ev2.rollout/* annotations
+// resolved through the sdp-pipelines repo.
 func FetchProwJobConfig(ctx context.Context, info *ProwJobInfo, sdpPipelinesDir string) (*ProwJobConfig, error) {
 	logger := logr.FromContextOrDiscard(ctx)
 
-	if info.IsPullRequest() {
-		return fetchPRJobConfig(ctx, info, logger)
+	switch info.Kind() {
+	case JobKindLocalE2E:
+		return fetchGCSConfig(ctx, info, localConfigPath, logger)
+	case JobKindPersistentE2E:
+		return fetchGCSConfig(ctx, info, writeConfigPath, logger)
+	case JobKindEV2Gated:
+		config, err := fetchGCSConfig(ctx, info, writeConfigPath, logger)
+		if err != nil {
+			logger.V(1).Info("GCS config not available for EV2 job, falling back to sdp-pipelines", "err", err)
+			return fetchEV2JobConfig(ctx, info, sdpPipelinesDir, logger)
+		}
+		return config, nil
+	default:
+		return nil, fmt.Errorf("unknown job kind for %q", info.JobName)
 	}
-	return fetchNonPRJobConfig(ctx, info, sdpPipelinesDir, logger)
 }
 
-// fetchPRJobConfig downloads the config.yaml from the aro-hcp-provision-environment
-// GCS artifact for a PR job and parses the Kusto connection info.
-func fetchPRJobConfig(ctx context.Context, info *ProwJobInfo, logger logr.Logger) (*ProwJobConfig, error) {
+// fetchGCSConfig downloads a config.yaml from a step's GCS artifact directory
+// and parses the Kusto connection info. The configRelPath is relative to the
+// artifact directory (e.g. "aro-hcp-write-config/artifacts/config.yaml").
+func fetchGCSConfig(ctx context.Context, info *ProwJobInfo, configRelPath string, logger logr.Logger) (*ProwJobConfig, error) {
 	gcsClient, err := storage.NewClient(ctx, option.WithoutAuthentication())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
@@ -238,17 +304,18 @@ func fetchPRJobConfig(ctx context.Context, info *ProwJobInfo, logger logr.Logger
 	}
 	logger.V(1).Info("Found artifact directory", "dir", artifactDir)
 
-	configGCSPath := fmt.Sprintf("%s/artifacts/%s/%s", info.GCSPrefix, artifactDir, prConfigPath)
+	configGCSPath := fmt.Sprintf("%s/artifacts/%s/%s", info.GCSPrefix, artifactDir, configRelPath)
 	configData, err := downloadObject(ctx, gcsClient, configGCSPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download config.yaml from provision-environment: %w", err)
+		return nil, fmt.Errorf("failed to download config from %s: %w", configRelPath, err)
 	}
 
 	jobConfig, err := parseConfig(configData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse config.yaml: %w", err)
+		return nil, fmt.Errorf("failed to parse config.yaml from %s: %w", configRelPath, err)
 	}
-	logger.V(1).Info("Parsed PR job config",
+	logger.V(1).Info("Parsed job config from GCS",
+		"configPath", configRelPath,
 		"region", jobConfig.Region,
 		"kusto", jobConfig.KustoName,
 		"serviceDB", jobConfig.ServiceDatabase,
@@ -257,10 +324,10 @@ func fetchPRJobConfig(ctx context.Context, info *ProwJobInfo, logger logr.Logger
 	return jobConfig, nil
 }
 
-// fetchNonPRJobConfig downloads prowjob.json from GCS, extracts the ev2.rollout/*
+// fetchEV2JobConfig downloads prowjob.json from GCS, extracts the ev2.rollout/*
 // annotations, and reads the rendered config from the sdp-pipelines repo at the
-// annotated commit SHA.
-func fetchNonPRJobConfig(ctx context.Context, info *ProwJobInfo, sdpPipelinesDir string, logger logr.Logger) (*ProwJobConfig, error) {
+// annotated commit SHA. This is the fallback path for EV2-gated jobs.
+func fetchEV2JobConfig(ctx context.Context, info *ProwJobInfo, sdpPipelinesDir string, logger logr.Logger) (*ProwJobConfig, error) {
 	if sdpPipelinesDir == "" {
 		return nil, fmt.Errorf("--sdp-pipelines-dir is required for non-PR jobs to resolve Kusto config from the sdp-pipelines repo")
 	}
@@ -346,7 +413,7 @@ func FetchProwJobTestResults(ctx context.Context, info *ProwJobInfo) ([]TestResu
 
 	// Download test results.
 	testStep := testStepPersistent
-	if info.IsPullRequest() {
+	if info.Kind() == JobKindLocalE2E {
 		testStep = testStepLocal
 	}
 	testResultsPrefix := fmt.Sprintf("%s/%s/artifacts/extension_test_result_e2e_", artifactPrefix, testStep)

@@ -53,7 +53,7 @@ func bindFromProwJobOptions(opts *RawFromProwJobOptions, cmd *cobra.Command) err
 	cmd.Flags().StringVar(&opts.URL, "url", opts.URL, "Prow job URL (required)")
 	cmd.Flags().StringVar(&opts.TestSelector, "test", opts.TestSelector, "Only gather data for tests whose name contains this substring")
 	cmd.Flags().StringVar(&opts.OutputDir, "output-dir", opts.OutputDir, "Directory to write snapshot output")
-	cmd.Flags().StringVar(&opts.SDPPipelinesDir, "sdp-pipelines-dir", opts.SDPPipelinesDir, "Path to a local checkout of the sdp-pipelines repo (required for non-PR jobs)")
+	cmd.Flags().StringVar(&opts.SDPPipelinesDir, "sdp-pipelines-dir", opts.SDPPipelinesDir, "Path to a local checkout of the sdp-pipelines repo (fallback for EV2-gated jobs when GCS config is unavailable)")
 	cmd.Flags().DurationVar(&opts.QueryTimeout, "query-timeout", opts.QueryTimeout, "Timeout for individual Kusto queries")
 	cmd.Flags().IntVar(&opts.Concurrency, "concurrency", opts.Concurrency, "Maximum number of concurrent Kusto queries (0 = 4*NumCPU)")
 
@@ -101,8 +101,10 @@ func (o *validatedFromProwJobOptions) run(ctx context.Context) error {
 
 	logger.Info("Fetching Prow job data",
 		"job", o.prowInfo.JobName,
+		"canonicalJob", o.prowInfo.CanonicalJobName,
 		"prowID", o.prowInfo.ProwID,
-		"isPR", o.prowInfo.IsPullRequest(),
+		"kind", o.prowInfo.Kind(),
+		"isRehearsal", o.prowInfo.IsRehearsal(),
 	)
 
 	// Phase 1 (per-job): Resolve Kusto config and download test results.
@@ -235,14 +237,19 @@ func newFromProwJobCommand() (*cobra.Command, error) {
 artifacts from GCS, resolving the Kusto connection info, identifying failed
 tests, and running the full data gathering pipeline for each one.
 
-For non-PR (EV2-triggered) jobs, the Kusto config is resolved by downloading
-prowjob.json to extract ev2.rollout/* annotations, then reading the rendered
-config from the sdp-pipelines repo at the annotated commit SHA. The
---sdp-pipelines-dir flag must point to a local checkout of the sdp-pipelines
-repo.
+Supports all E2E job types:
+  - DEV PR jobs (aro-hcp-local-e2e workflow)
+  - Persistent-environment PR jobs (stage/int/prod-e2e-parallel)
+  - Periodic E2E jobs
+  - EV2-gated postsubmit jobs
+  - pj-rehearse rehearsal jobs (any of the above)
 
-For PR jobs, the Kusto config is extracted from the
-aro-hcp-provision-environment step artifact in GCS.
+For DEV PR jobs, the Kusto config is extracted from the
+aro-hcp-provision-environment step artifact in GCS. For persistent-environment
+jobs (PR, periodic, rehearsal), it is extracted from the aro-hcp-write-config
+step artifact. For EV2-gated jobs, it first tries the GCS artifact and falls
+back to reading prowjob.json ev2.rollout/* annotations and resolving config
+from the sdp-pipelines repo (requires --sdp-pipelines-dir).
 
 Each test snapshot includes Kusto query results, test logs (error and output),
 sibling test metadata, and a manifest.json index suitable for automated
@@ -252,20 +259,32 @@ The resource group and time window are extracted from each test's output logs
 and metadata.
 
 Use --test to filter to a specific test by name substring.`,
-		Example: `  # Gather snapshots for all failed tests in an EV2-triggered job
+		Example: `  # DEV PR job
+  hcpctl snapshot from-prow-job \
+    --url https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/Azure_ARO-HCP/9999/pull-ci-Azure-ARO-HCP-main-aro-hcp-e2e-parallel/1234567890
+
+  # Persistent-environment PR job (stage)
+  hcpctl snapshot from-prow-job \
+    --url https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/Azure_ARO-HCP/9999/pull-ci-Azure-ARO-HCP-main-stage-e2e-parallel/1234567890
+
+  # pj-rehearse rehearsal job
+  hcpctl snapshot from-prow-job \
+    --url https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift_release/80467/rehearse-80467-pull-ci-Azure-ARO-HCP-main-stage-e2e-parallel/2066499828505907200
+
+  # Periodic job
+  hcpctl snapshot from-prow-job \
+    --url https://prow.ci.openshift.org/view/gs/test-platform-results/logs/periodic-ci-Azure-ARO-HCP-main-periodic-stage-e2e-parallel/1234567890
+
+  # EV2-gated job (--sdp-pipelines-dir as fallback)
   hcpctl snapshot from-prow-job \
     --url https://prow.ci.openshift.org/view/gs/test-platform-results/logs/branch-ci-Azure-ARO-HCP-main-e2e-prod-e2e-parallel/1234567890 \
     --sdp-pipelines-dir /path/to/sdp-pipelines
 
-  # Gather snapshot for a specific test
+  # Specific test
   hcpctl snapshot from-prow-job \
     --url https://prow.ci.openshift.org/view/gs/test-platform-results/logs/branch-ci-Azure-ARO-HCP-main-e2e-prod-e2e-parallel/1234567890 \
     --sdp-pipelines-dir /path/to/sdp-pipelines \
-    --test TestNodePoolCreation
-
-  # PR job (no --sdp-pipelines-dir needed)
-  hcpctl snapshot from-prow-job \
-    --url https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/Azure_ARO-HCP/9999/pull-ci-Azure-ARO-HCP-main-aro-hcp-e2e-parallel/1234567890`,
+    --test TestNodePoolCreation`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
