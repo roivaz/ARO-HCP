@@ -108,7 +108,7 @@ az provider show --namespace Microsoft.Compute \
    - Verify that the deployment stacks and identity-container resource groups are created in the new subscription.
 
 6. Extend the DEV bootstrap RBAC and quota-monitoring inventory.
-   - Add the subscription name and ID to `config/config-dev-ci.yaml` under `devCi.e2eSubscriptionRbac.customerSubscriptions`.
+   - Add the subscription name and ID to `config/config-dev-ci.yaml` under `ci.dev.e2eSubscriptions`.
    - That list now feeds the `dev-ci` RBAC parameter templates directly, so a brand-new subscription does not require extra per-index template edits.
    - In the same `config/config-dev-ci.yaml`, also add the subscription to the `opstool.tenantQuota` tenant's `subscriptions` list so the `tenant-quota-collector` tracks it. Set `roleAssignmentLimit: 8000` and list the same `regions` the pool runs in, matching the Role Assignment quota requested in step 2.
    - In a normal onboarding flow, `homeSubscription`, `sharedPrincipals`, and `msiMockPool.principals` should not need to change.
@@ -144,6 +144,12 @@ Those steps only become necessary if the shared identities or the Boskos-backed 
 - `dev-infrastructure/configurations/e2e-subscription-rbac-assignments.tmpl.bicepparam`
 - [Dev-CI Topology](dev-ci-topology.md)
 - [CI Identity Leasing](identity-leasing.md)
+
+### External (Unmanaged) Subscriptions
+
+For subscriptions owned by a different team where our pipeline identity does **not** have access, use the external onboarding model instead. External subscriptions are marked with `unmanaged: true` in `config/config-dev-ci.yaml` and `identity_provisioning: unmanaged` in the slot catalog.
+
+The external team runs the RBAC setup and identity-pool provisioning themselves using our Bicep modules. See [External Subscription Onboarding](external-subscription-onboarding.md) for the full procedure and grant contract.
 
 ---
 
