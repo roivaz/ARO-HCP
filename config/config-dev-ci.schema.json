@@ -440,7 +440,11 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
-        "id": { "type": "string" }
+        "id": { "type": "string" },
+        "unmanaged": {
+          "type": "boolean",
+          "description": "If true, the RBAC pipeline skips this subscription (not managed by the ARO-HCP pipeline identity)"
+        }
       },
       "required": ["name", "id"]
     },

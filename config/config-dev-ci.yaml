@@ -230,6 +230,9 @@ clouds:
             id: "e627aa70-36a3-40b0-8e68-975269e39d7b"
           - name: "ARO HCP E2E Hosted Clusters - Dev - 03"
             id: "6ed122d1-7e03-4a01-baae-9020abf350d4"
+          - name: "Hypershift Managed Azure"
+            id: "f464d333-13e0-40c6-a3de-a8e8cb32c939"
+            unmanaged: true
           infrastructureSubscriptions:
           - name: "ARO Hosted Control Planes (EA Subscription 1)"
             id: "1d3378d3-5a3f-4712-85a1-2485495dfc4b"

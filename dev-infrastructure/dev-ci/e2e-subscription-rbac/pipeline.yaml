@@ -81,6 +81,14 @@ resourceGroups:
     dependsOn:
     - resourceGroup: ci-bots
       step: ci-bot-identity
+  - name: ci-bot-rbac-dev
+    action: ARM
+    template: ../../templates/ci-bot-rbac.bicep
+    parameters: ../../configurations/ci-bot-rbac-dev.tmpl.bicepparam
+    deploymentLevel: ResourceGroup
+    dependsOn:
+    - resourceGroup: ci-bots
+      step: ci-bot-identity
   - name: ci-bot-rbac-int
     action: ARM
     template: ../../templates/ci-bot-rbac.bicep

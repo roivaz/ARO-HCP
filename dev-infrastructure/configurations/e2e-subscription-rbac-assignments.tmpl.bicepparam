@@ -1,6 +1,6 @@
 using '../templates/e2e-subscription-rbac-assignments.bicep'
 
-param customerSubscriptionIds = empty('{{ range $index, $subscription := .ci.dev.e2eSubscriptions }}{{ if $index }},{{ end }}{{ $subscription.id }}{{ end }}') ? [] : split('{{ range $index, $subscription := .ci.dev.e2eSubscriptions }}{{ if $index }},{{ end }}{{ $subscription.id }}{{ end }}', ',')
+param customerSubscriptionIds = empty('{{ $sep := "" }}{{ range $subscription := .ci.dev.e2eSubscriptions }}{{ if not $subscription.unmanaged }}{{ $sep }}{{ $subscription.id }}{{ $sep = "," }}{{ end }}{{ end }}') ? [] : split('{{ $sep := "" }}{{ range $subscription := .ci.dev.e2eSubscriptions }}{{ if not $subscription.unmanaged }}{{ $sep }}{{ $subscription.id }}{{ $sep = "," }}{{ end }}{{ end }}', ',')
 
 param homeSubscriptionId = '{{ .ci.dev.devMockIdentities.homeSubscriptionId }}'
 
