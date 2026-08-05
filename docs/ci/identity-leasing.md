@@ -335,8 +335,8 @@ Jobs only consume the Boskos key and the static `msi-mock-pool.yaml` catalog at 
 
 ## ARM Helper Service Principal Pool
 
-The DEV ARM helper pool prevents concurrent E2E backends from sharing the
-third-party-application CheckAccess limit. Each member is an
+The DEV ARM helper pool prevents concurrent E2E backend and Clusters Service
+clients from sharing the third-party-application CheckAccess limit. Each member is an
 `aro-dev-arm-helper-pool-<i>` application/service principal with its own pinned
 `armHelperPoolCert-<i>` certificate and the same subscription-level Contributor
 and Role Based Access Control Administrator grants as `aro-dev-arm-helper2` on
@@ -362,13 +362,16 @@ Maintainer flow:
    the desired size directly from `config/config-dev-ci.yaml`.
 5. Add or update the `aro-hcp-arm-helper-sp-dev` Boskos inventory in
    `openshift/release`;
-   after that inventory has rolled out, request one lease as
+   after that inventory has rolled out, request two resources in one lease as
    `LEASED_ARM_HELPER_SP`.
 
 The runtime catalog is
 `dev-infrastructure/openshift-ci/arm-helper-pool.yaml`. An unknown or incomplete
-lease entry fails provisioning. A missing lease preserves the shared
-`armHelperClientId` and `armHelperCertName` defaults. The lease does **not**
+lease entry fails provisioning, as does receiving anything other than two
+distinct resource names. A missing lease preserves the shared named-identity
+defaults. Both resources are validated, but only the first currently overrides
+`armHelperClientId` and `armHelperCertName`; the second remains reserved for
+future Clusters Service wiring. The lease does **not**
 override `armHelperFPAPrincipalId`, which is the shared mock first-party
 principal rather than the authenticating ARM helper.
 

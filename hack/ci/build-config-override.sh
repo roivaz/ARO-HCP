@@ -9,7 +9,7 @@
 # Optional env vars consumed:
 #   *_IMAGE (BACKEND_IMAGE, FRONTEND_IMAGE, etc.) — digest-based image refs
 #   LEASED_MSI_MOCK_SP      — MSI mock SP lease name
-#   LEASED_ARM_HELPER_SP    — ARM helper SP lease name
+#   LEASED_ARM_HELPER_SP    — two whitespace-separated ARM helper SP lease names
 #   LEASED_MSI_CONTAINERS   — MSI identity container lease (controls MGMT sizing)
 #
 # Outputs:
@@ -120,29 +120,47 @@ else
   echo "No MSI mock SP lease provided, skipping mock SP overrides"
 fi
 
-# ARM helper SP overrides (if provided). armHelperFPAPrincipalId deliberately
-# remains unchanged: it identifies the mock first-party principal that receives
-# the simulated FPA grant, not the ARM helper that authenticates this client.
+# ARM helper SP overrides (if provided). The second lease is reserved for
+# Clusters Service but remains unused until its dedicated identity wiring lands.
+# armHelperFPAPrincipalId deliberately remains unchanged: it identifies the mock
+# first-party principal, not either ARM helper authenticating a client.
 if [[ -n "${LEASED_ARM_HELPER_SP:-}" ]]; then
-  ARM_HELPER_CLIENT_ID=$(yq ".armHelperPool.\"${LEASED_ARM_HELPER_SP}\".clientId" "${ARM_HELPER_POOL_CATALOG}")
-  ARM_HELPER_PRINCIPAL_ID=$(yq ".armHelperPool.\"${LEASED_ARM_HELPER_SP}\".principalId" "${ARM_HELPER_POOL_CATALOG}")
-  ARM_HELPER_CERT_NAME=$(yq ".armHelperPool.\"${LEASED_ARM_HELPER_SP}\".certName" "${ARM_HELPER_POOL_CATALOG}")
-  if [[ -z "${ARM_HELPER_CLIENT_ID}" || "${ARM_HELPER_CLIENT_ID}" == "null" || \
-        -z "${ARM_HELPER_PRINCIPAL_ID}" || "${ARM_HELPER_PRINCIPAL_ID}" == "null" || \
-        -z "${ARM_HELPER_CERT_NAME}" || "${ARM_HELPER_CERT_NAME}" == "null" ]]; then
-    echo "ERROR: LEASED_ARM_HELPER_SP='${LEASED_ARM_HELPER_SP}' not found or incomplete in ${ARM_HELPER_POOL_CATALOG}"
+  read -r -a ARM_HELPER_LEASES <<< "${LEASED_ARM_HELPER_SP}"
+  if [[ "${#ARM_HELPER_LEASES[@]}" -ne 2 ]]; then
+    echo "ERROR: LEASED_ARM_HELPER_SP must contain exactly two whitespace-separated resource names"
     exit 1
   fi
-  echo "ARM helper SP override: ${LEASED_ARM_HELPER_SP} -> clientId=${ARM_HELPER_CLIENT_ID}"
-  export _YQ_ARM_HELPER_CID="${ARM_HELPER_CLIENT_ID}"
-  export _YQ_ARM_HELPER_CERT="${ARM_HELPER_CERT_NAME}"
+  if [[ "${ARM_HELPER_LEASES[0]}" == "${ARM_HELPER_LEASES[1]}" ]]; then
+    echo "ERROR: LEASED_ARM_HELPER_SP must contain two distinct resource names"
+    exit 1
+  fi
+
+  ARM_HELPER_CLIENT_IDS=()
+  ARM_HELPER_CERT_NAMES=()
+  for lease in "${ARM_HELPER_LEASES[@]}"; do
+    client_id=$(yq ".armHelperPool.\"${lease}\".clientId" "${ARM_HELPER_POOL_CATALOG}")
+    principal_id=$(yq ".armHelperPool.\"${lease}\".principalId" "${ARM_HELPER_POOL_CATALOG}")
+    cert_name=$(yq ".armHelperPool.\"${lease}\".certName" "${ARM_HELPER_POOL_CATALOG}")
+    if [[ -z "${client_id}" || "${client_id}" == "null" || \
+          -z "${principal_id}" || "${principal_id}" == "null" || \
+          -z "${cert_name}" || "${cert_name}" == "null" ]]; then
+      echo "ERROR: ARM helper lease '${lease}' not found or incomplete in ${ARM_HELPER_POOL_CATALOG}"
+      exit 1
+    fi
+    ARM_HELPER_CLIENT_IDS+=("${client_id}")
+    ARM_HELPER_CERT_NAMES+=("${cert_name}")
+  done
+
+  echo "ARM helper SP leases: backend=${ARM_HELPER_LEASES[0]}, clustersService=${ARM_HELPER_LEASES[1]} (reserved)"
+  export _YQ_ARM_HELPER_CID="${ARM_HELPER_CLIENT_IDS[0]}"
+  export _YQ_ARM_HELPER_CERT="${ARM_HELPER_CERT_NAMES[0]}"
   yq -i "
     .clouds.dev.environments.${DEPLOY_ENV}.defaults.armHelperClientId = strenv(_YQ_ARM_HELPER_CID) |
     .clouds.dev.environments.${DEPLOY_ENV}.defaults.armHelperCertName = strenv(_YQ_ARM_HELPER_CERT)
   " "${OVERRIDE_CONFIG_FILE}"
   unset _YQ_ARM_HELPER_CID _YQ_ARM_HELPER_CERT
 else
-  echo "No ARM helper SP lease provided, skipping ARM helper overrides"
+  echo "No ARM helper SP leases provided, skipping ARM helper overrides"
 fi
 
 # Healthcheck workflows provision without leases and don't need E2E-sized clusters.

@@ -77,11 +77,14 @@ clones on the DEV home and E2E customer subscriptions. The home-subscription
 grants make it possible to test a pool member in a personal development
 environment. CheckAccess throttles third-party applications per
 identity/application, while each concurrent E2E environment runs its own
-backend-local limiter. Leasing one clone per environment prevents those
-independent backends from aggregating their CheckAccess requests through
-`aro-dev-arm-helper2`.
+backend- and Clusters Service-local limiters. Leasing two clones per environment
+prevents those independent clients from aggregating their CheckAccess requests
+through `aro-dev-arm-helper2` or through each other.
 
-At runtime a lease overrides `armHelperClientId` and `armHelperCertName` only.
+At runtime `LEASED_ARM_HELPER_SP` contains two whitespace-separated resource
+names. Both catalog entries are validated, but only the first currently
+overrides `armHelperClientId` and `armHelperCertName`. The second remains leased
+and reserved until Clusters Service supports a dedicated ARM helper identity.
 `armHelperFPAPrincipalId` remains the shared first-party mock principal: despite
 its similar name, it identifies the principal that receives the simulated FPA
 grant, not the ARM helper authenticating the request.
