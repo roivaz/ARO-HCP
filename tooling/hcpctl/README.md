@@ -38,6 +38,44 @@ The tool will be available on SAW devices similar to how the `oc` utility is acc
 - `hcpctl hcp list` - List available HCP clusters
 - `hcpctl hcp breakglass <cluster-service-id|azure-resource-id>` - Emergency access to HCP cluster
 
+### CI Failure Patterns (`ci failure-patterns`)
+
+- `hcpctl ci failure-patterns` - Query CI failures from Kusto and group similar failure evidence
+- `hcpctl ci failure-patterns --input <file>` - Analyze previously saved inputs locally without Azure authentication
+
+Query the last 24 hours across all job environments in the selected database, save the inputs, and open the HTML report in a browser:
+
+```bash
+hcpctl ci failure-patterns \
+  --kusto hcp-dev-us-2 --region eastus2 \
+  --since 24h --save-input failures.json > report.html
+```
+
+Live queries use your Azure credentials and require `--kusto`, `--region`, and a time window. The database defaults to `ServiceLogs`. Reports group runs by job environment; `--environment dev` selects only DEV runs (also supported: `int`, `stg`, `prod`, and `unknown`). Omitting it includes all environments in this database, not additional Kusto clusters. Use `--since 168h` for the last seven days, or `--from` and `--to` for a fixed window based on job completion time (start inclusive, end exclusive):
+
+```bash
+hcpctl ci failure-patterns \
+  --kusto hcp-dev-us-2 --region eastus2 --environment dev \
+  --from 2026-11-02T00:00:00Z --to 2026-11-03T00:00:00Z \
+  --source rp-provision --job-filter e2e-parallel \
+  --save-input provision-failures.json --format json > provision-report.json
+```
+
+Use `--source` to select `e2e`, `observability`, `rp-provision`, or `rp-upgrade`; omit it to include all sources. `--job-filter` defaults to the case-sensitive substring `e2e-parallel`; override it to select another job family, or use `--job-filter ""` to include all job names. Unrecognized job environments are shown as unknown. Use `--timeout 5m` if the default two-minute query timeout is too short.
+
+Replay the saved inputs to inspect evidence or compare results after updating hcpctl:
+
+```bash
+hcpctl ci failure-patterns --input provision-failures.json --include-evidence > replay.html
+hcpctl ci failure-patterns --input provision-failures.json --format json > replay-report.json
+```
+
+HTML is the default; use `--format json` for automation. Patterns rank by distinct runs affected, and impact shows affected runs out of all selected runs in that environment, including successful runs. Open the HTML locally to filter patterns, sort columns, expand full descriptions, and inspect contributing tests and linked runs. `--include-evidence` embeds bounded raw excerpts.
+
+`--input` retains saved environments, the time window, and filters; do not combine it with live-query options. Older saved inputs retain their original environment labels rather than being reclassified. `--save-input` saves raw inputs, not the report, and refuses to overwrite an existing file. HTML reports work offline without external assets.
+
+**Saved inputs and evidence can contain secrets. Store them securely and do not commit or share them without review.** Failure groups describe similar symptoms, not a confirmed root cause.
+
 ## Example Usage
 
 ### Snapshot Analysis with Claude Code
