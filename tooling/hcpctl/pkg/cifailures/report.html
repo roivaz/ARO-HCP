@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>CIHealth · Failure patterns</title>
+<style>
+:root { color-scheme: light dark; --bg:#f5f7fb; --panel:#fff; --text:#172033; --muted:#526078; --line:#dce2eb; --accent:#175cd3; --subtle:#edf3ff; --warning:#fff7e0; --warning-border:#ae7811; }
+@media (prefers-color-scheme: dark) { :root { --bg:#10151e; --panel:#19212e; --text:#edf1fa; --muted:#b2bed1; --line:#354156; --accent:#91baff; --subtle:#202f48; --warning:#30291b; --warning-border:#dcab45; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 system-ui,sans-serif; }
+main { max-width:1440px; margin:auto; padding:20px; }
+header { border-bottom:1px solid var(--line); margin-bottom:12px; }
+h1 { font-size:1.8rem; margin:4px 0 12px; } h2 { font-size:1.35rem; margin:0; } h3 { font-size:1rem; }
+.brand { color:var(--accent); font-weight:750; letter-spacing:.05em; }
+p { margin:8px 0 14px; } .muted, small { color:var(--muted); }
+a { color:var(--accent); } a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+.metrics { display:flex; flex-wrap:wrap; gap:12px; margin:12px 0; }
+.metric { background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:8px 14px; min-width:130px; }
+.metric strong { display:block; font-size:1.4rem; line-height:1.25; } .metric span { color:var(--muted); }
+.coverage { background:var(--warning); border-left:4px solid var(--warning-border); padding:10px 14px; margin:12px 0; overflow-wrap:anywhere; }
+.controls { margin:24px 0 18px; } input { display:block; width:min(100%,580px); margin-top:6px; padding:10px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--text); font:inherit; }
+.environment { margin:26px 0; padding:20px; background:var(--panel); border:1px solid var(--line); border-radius:10px; }
+.population { color:var(--muted); margin:8px 0 16px; }
+.table-scroll { overflow-x:auto; } table { width:100%; border-collapse:collapse; table-layout:fixed; }
+th, td { padding:14px 12px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line); }
+th { background:var(--subtle); font-size:.85rem; } th:first-child { width:61%; } th:nth-child(2) { width:12%; } th:nth-child(3) { width:13%; } th:nth-child(4) { width:14%; }
+th button { background:none; border:0; color:inherit; font:inherit; font-weight:700; cursor:pointer; padding:0; text-align:left; }
+th[aria-sort="descending"] button::after { content:" ↓"; } th[aria-sort="ascending"] button::after { content:" ↑"; }
+.pattern-name { font-weight:650; font-size:1rem; margin-bottom:10px; overflow-wrap:anywhere; white-space:pre-wrap; }
+.stage { display:inline-block; background:var(--subtle); border-radius:5px; padding:2px 7px; overflow-wrap:anywhere; }
+.number { font-variant-numeric:tabular-nums; } td small { display:block; }
+details { margin:8px 0; overflow-wrap:anywhere; } summary { cursor:pointer; color:var(--accent); } details[open] > summary { margin-bottom:8px; }
+ul { padding-left:22px; } li { margin:7px 0; } pre, code { font-family:ui-monospace,monospace; } pre { background:var(--bg); border:1px solid var(--line); padding:12px; white-space:pre-wrap; overflow-wrap:anywhere; max-height:32rem; overflow:auto; }
+.diagnostics { margin-top:24px; padding:12px 16px; border:1px solid var(--line); border-radius:7px; } .diagnostics dl { display:grid; grid-template-columns:max-content 1fr; gap:6px 18px; } dd { margin:0; overflow-wrap:anywhere; } .omission { color:var(--muted); font-style:italic; }
+[hidden] { display:none !important; }
+@media (max-width:700px) { main { padding:14px; } .environment { padding:12px; } th,td { padding:10px 7px; } table { min-width:560px; } th:first-child { width:55%; } th:nth-child(2) { width:13%; } th:nth-child(3),th:nth-child(4) { width:16%; } .diagnostics dl { display:block; } dt { font-weight:600; } dd { margin-bottom:10px; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+<div class="brand">CIHealth</div>
+<h1>Failure patterns</h1>
+<p class="muted">Window: <time>{{timestamp .Metadata.Window.From}}</time> to <time>{{timestamp .Metadata.Window.To}}</time> (exclusive).</p>
+<p class="muted">Environment filter: {{filter .Metadata.Environment}} · Source filter: {{filter .Metadata.Filters.Source}} · Job substring filter: {{filter .Metadata.Filters.JobFilter}}</p>
+</header>
+<div class="metrics" aria-label="Report totals">
+<div class="metric"><strong>{{.Coverage.SelectedRuns}}</strong><span>Total runs</span></div>
+<div class="metric"><strong>{{.Coverage.FailedRuns}}</strong><span>Failed runs</span></div>
+<div class="metric"><strong>{{.AffectedRuns}}</strong><span>Affected runs</span></div>
+<div class="metric"><strong>{{.TotalPatterns}}</strong><span>Failure patterns</span></div>
+</div>
+<p class="muted">Affected runs have selected failure observations. Impact is the percentage of all selected runs in that environment affected by a pattern, including successful runs in the denominator. Patterns can overlap; their counts must not be added.</p>
+<aside class="coverage" aria-labelledby="coverage-heading">
+<h2 id="coverage-heading">Coverage gaps</h2>
+<p><strong>{{.Coverage.FailedRunsWithoutObservations}}</strong> failed runs have no observations matching the selected source filter. Processed runs: {{.Coverage.ProcessedRuns}} of {{.Coverage.SelectedRuns}}. Query complete: {{.Coverage.QueryComplete}}.</p>
+<details><summary>Coverage limitations and failed runs without observations</summary>
+<p>Missing test names: {{.Coverage.MissingTestNames}} · Ambiguous test names: {{.Coverage.AmbiguousTestNames}} · Inputs without a recorded source: {{.Coverage.UnspecifiedSourceInputs}}.</p>
+<p>Showing {{len .Patterns}} of {{.TotalPatterns}} patterns; {{.PatternsOmitted}} omitted by the presentation limit. Display values truncated: {{.DisplayValuesTruncated}}. Counts always include omitted data.</p>
+<ul>{{range .Coverage.Limitations}}<li>{{.}}</li>{{end}}</ul>
+<ul>{{range .Coverage.FailedRunReferences}}<li>{{template "run" .}} · {{.Environment}} · processed: {{.Processed}}</li>{{end}}</ul>
+<p class="omission">Failed-run references omitted: {{.Coverage.FailedRunReferencesOmitted}}.</p>
+</details>
+</aside>
+<div class="controls" hidden>
+<label for="pattern-filter">Filter failure patterns</label>
+<input id="pattern-filter" type="search" placeholder="Search patterns, tests, runs or evidence" autocomplete="off" aria-describedby="filter-description">
+<p id="filter-description" class="muted">Filtering only changes visible rows, never population counts or impact denominators.</p>
+<p id="filter-status" role="status" aria-live="polite"></p>
+</div>
+{{range .Sections}}
+<section class="environment" aria-label="{{.Summary.Environment}} environment">
+<h2>{{.Summary.Environment}}</h2>
+<p class="population"><strong>{{.Summary.SelectedRuns}}</strong> total runs · <strong>{{.Summary.FailedRuns}}</strong> failed · <strong>{{.Summary.AffectedRuns}}</strong> affected · {{.Summary.FailedRunsWithoutObservations}} failed without selected observations</p>
+{{if .Patterns}}
+<div class="table-scroll">
+<table>
+<thead><tr>
+<th scope="col" aria-sort="none"><button type="button" data-sort="name">Failure pattern</button></th>
+<th scope="col" aria-sort="none"><button type="button" data-sort="stage">Failed at</button></th>
+<th scope="col" aria-sort="descending"><button type="button" data-sort="runs">Runs affected</button></th>
+<th scope="col" aria-sort="none"><button type="button" data-sort="impact">Impact</button></th>
+</tr></thead>
+<tbody>
+{{range .Patterns}}
+<tr class="pattern" data-name="{{.Canonical}}" data-stage="{{stage .Source}}" data-runs="{{.AffectedRuns}}" data-impact="{{.ImpactPercent}}">
+<td>
+<details class="description"><summary class="pattern-name">{{preview .Canonical}}</summary><div class="pattern-name">{{.Canonical}}</div></details>
+{{if $.EvidenceIncluded}}
+<details class="examples"><summary>Full failure examples ({{len .References}} shown)</summary>
+{{range .References}}<article><p>Run {{.BuildID}} · Test {{.TestName}} ({{.TestID}}) · {{.Multiplicity}} input record(s)</p><pre>{{.Evidence}}</pre>{{if .EvidenceTruncated}}<p class="omission">Evidence truncated at the byte limit; the full input is available only in a saved replay bundle.</p>{{end}}</article>{{end}}
+<p class="omission">Input examples omitted: {{.ReferencesOmitted}}. Examples are bounded raw ingested messages, not necessarily complete artifact output.</p>
+</details>
+{{else}}<p class="muted">Failure evidence not included.</p>{{end}}
+<details class="tests"><summary>Contributing tests ({{len .Tests}} shown)</summary><ul>{{range .Tests}}<li>{{if .}}{{.}}{{else}}Unknown test name{{end}}</li>{{end}}</ul><p class="omission">Tests omitted: {{.TestsOmitted}}.</p></details>
+<details class="runs"><summary>Affected runs ({{.AffectedRuns}} total)</summary><ul>{{range .RunReferences}}<li>{{template "run" .}}</li>{{end}}</ul><p class="omission">Run references omitted: {{.RunReferencesOmitted}}.</p></details>
+<details class="technical"><summary>Technical diagnostics</summary>
+<p>Raw source: <code>{{if .Source}}{{.Source}}{{else}}(empty){{end}}</code> · Semantic key: <code>{{.Key}}</code></p>
+<p>Affected inputs: {{.AffectedInputs}} · Findings: {{.Findings}} · Subject findings: {{.SubjectFindings}}</p>
+<p>Rules: {{join .RuleIDs ", "}} · Quality reasons: {{join .QualityReasons ", "}}</p>
+<p>Provider: {{.Provider}} · Outer code: {{.OuterCode}} · Detail code: {{.DetailCode}}</p>
+<p>Finding outcomes: matched {{.Outcomes.Matched}}, fallback {{.Outcomes.Fallback}}, missing evidence {{.Outcomes.MissingEvidence}}.</p>
+{{with .Subject}}<p>Subject: {{.Kind}}/{{.Name}} · Observed names: {{join .ObservedNames ", "}}</p>{{end}}
+<p class="omission">Observed names omitted: {{.ObservedNamesOmitted}}. Input references omitted: {{.ReferencesOmitted}}.</p>
+<ul>{{range .References}}<li><code>{{.Fingerprint}}</code> · Run {{.BuildID}} · Test {{.TestID}} · Multiplicity {{.Multiplicity}} · Raw byte spans: {{range .Locations}}[{{.Start}}, {{.End}}) {{end}} · Spans omitted: {{.LocationsOmitted}}</li>{{end}}</ul>
+</details>
+</td>
+<td><span class="stage">{{stage .Source}}</span></td>
+<td class="number"><strong>{{.AffectedRuns}}</strong><small>{{.AffectedInputs}} affected inputs</small></td>
+<td class="number"><strong>{{printf "%.1f" .ImpactPercent}}%</strong><small>{{.AffectedRuns}} of {{.TotalRuns}} total runs</small></td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}<p class="muted">No displayed patterns for this environment. Population counts include all selected runs, even when patterns are absent or omitted.</p>{{end}}
+</section>
+{{else}}<p>No runs selected.</p>{{end}}
+<details class="diagnostics"><summary>Technical diagnostics</summary>
+<dl>
+<dt>Origin</dt><dd>{{.Metadata.Origin}}</dd>
+<dt>Schema</dt><dd>{{.SchemaVersion}}</dd>
+<dt>Extractor revision</dt><dd>{{.ExtractorRevision}}</dd>
+<dt>Evidence included</dt><dd>{{.EvidenceIncluded}}</dd>
+<dt>Failed input records</dt><dd>{{.FailedInputs}}</dd>
+<dt>Input bytes</dt><dd>{{.InputBytes}}</dd>
+<dt>Findings / subject findings</dt><dd>{{.Findings}} / {{.SubjectFindings}}</dd>
+<dt>Finding outcomes</dt><dd>Matched {{.Outcomes.Matched}} · Fallback {{.Outcomes.Fallback}} · Missing evidence {{.Outcomes.MissingEvidence}}</dd>
+<dt>Input outcomes (overlapping)</dt><dd>Matched {{.InputOutcomes.Matched}} · Fallback {{.InputOutcomes.Fallback}} · Missing evidence {{.InputOutcomes.MissingEvidence}}</dd>
+<dt>Source input counts</dt><dd>{{range $source, $count := .Coverage.Sources}}<div>{{if $source}}{{$source}}{{else}}(empty){{end}}: {{$count}}</div>{{end}}</dd>
+</dl>
+</details>
+</main>
+<script>
+'use strict';
+(() => {
+  const rows = Array.from(document.querySelectorAll('tr.pattern'));
+  const input = document.getElementById('pattern-filter');
+  const status = document.getElementById('filter-status');
+  const searchable = new Map(rows.map(row => [row, row.textContent.toLowerCase()]));
+  const updateFilter = () => {
+    const text = input.value.trim().toLowerCase();
+    let visible = 0;
+    rows.forEach(row => {
+      row.hidden = !searchable.get(row).includes(text);
+      if (!row.hidden) visible++;
+    });
+    status.textContent = visible + ' of ' + rows.length + ' displayed patterns match. Population totals are unchanged.';
+  };
+  input.addEventListener('input', updateFilter);
+  document.querySelector('.controls').hidden = false;
+  document.querySelectorAll('table').forEach(table => {
+    const body = table.tBodies[0];
+    const originalOrder = new Map(Array.from(body.rows).map((row, index) => [row, index]));
+    table.querySelectorAll('button[data-sort]').forEach(button => {
+      button.addEventListener('click', () => {
+        const header = button.closest('th');
+        const key = button.dataset.sort;
+        const numeric = key === 'runs' || key === 'impact';
+        const previous = header.getAttribute('aria-sort');
+        const descending = previous === 'ascending' || (previous === 'none' && numeric);
+        table.querySelectorAll('th').forEach(th => th.setAttribute('aria-sort', 'none'));
+        header.setAttribute('aria-sort', descending ? 'descending' : 'ascending');
+        const sorted = Array.from(body.rows).sort((left, right) => {
+          const a = left.dataset[key];
+          const b = right.dataset[key];
+          const difference = numeric ? Number(a) - Number(b) : a.localeCompare(b);
+          return difference ? (descending ? -difference : difference) : originalOrder.get(left) - originalOrder.get(right);
+        });
+        sorted.forEach(row => body.appendChild(row));
+      });
+    });
+  });
+  updateFilter();
+})();
+</script>
+</body>
+</html>
+{{define "run"}}{{if safeURL .ProwURL}}<a href="{{safeURL .ProwURL}}" target="_blank" rel="noopener noreferrer">{{.BuildID}}</a>{{else}}<span>{{.BuildID}}</span>{{end}}{{if .JobName}} · {{.JobName}}{{end}}{{end}}
