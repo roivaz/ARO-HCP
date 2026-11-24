@@ -34,6 +34,11 @@ func (handler *Handler) ReconcileSubscriptionRoles(ctx context.Context, request 
 	if err != nil {
 		return err
 	}
+	if request.SubscriptionID != "" {
+		resolveSubscriptionID = func(context.Context, string) (string, error) {
+			return request.SubscriptionID, nil
+		}
+	}
 	store, err := handler.newStore(credential)
 	if err != nil {
 		return fmt.Errorf("create mock identity client: %w", err)

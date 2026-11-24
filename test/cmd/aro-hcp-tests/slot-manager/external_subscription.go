@@ -19,12 +19,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/go-logr/logr"
 	msgraph "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
 
 	"github.com/Azure/ARO-HCP/test/cmd/aro-hcp-tests/slot-manager/assets"
 	"github.com/Azure/ARO-HCP/test/cmd/aro-hcp-tests/slot-manager/assets/e2eidentities"
@@ -271,7 +274,7 @@ func azureExternalSubscriptionSteps() (externalSubscriptionSteps, error) {
 	mockHandler := mockidentities.NewHandler()
 	return externalSubscriptionSteps{
 		resolveSubscriptionID: func(ctx context.Context, name string) (string, error) {
-			return framework.GetSubscriptionID(ctx, subscriptionClientFactory.NewClient(), name)
+			return resolveExternalSubscriptionID(ctx, subscriptionClientFactory.NewClient(), name)
 		},
 		registerProviders: func(ctx context.Context, ids, namespaces []string) error {
 			return subscriptions.RegisterProviders(ctx, credential, azureclient.ARMClientOptions(), ids, namespaces)
@@ -286,6 +289,33 @@ func azureExternalSubscriptionSteps() (externalSubscriptionSteps, error) {
 	}, nil
 }
 
+func resolveExternalSubscriptionID(ctx context.Context, client *armsubscriptions.Client, name string) (string, error) {
+	var id string
+	pager := client.NewListPager(nil)
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return "", err
+		}
+		for _, sub := range page.Value {
+			if sub == nil || sub.DisplayName == nil || *sub.DisplayName != name {
+				continue
+			}
+			if id != "" {
+				return "", fmt.Errorf("more than one subscription has display name %q", name)
+			}
+			if sub.SubscriptionID == nil || *sub.SubscriptionID == "" {
+				return "", fmt.Errorf("subscription %q has no ID", name)
+			}
+			id = *sub.SubscriptionID
+		}
+	}
+	if id == "" {
+		return "", fmt.Errorf("subscription with display name %q not found", name)
+	}
+	return id, nil
+}
+
 // Run prepares the subscription. Every step is idempotent, so a failed run can
 // simply be repeated. Steps are not all additive: applying the E2E identity
 // containers deletes containers that the catalog no longer declares (deployment
@@ -297,6 +327,15 @@ func (o *ReconcileExternalSubscriptionOptions) Run(ctx context.Context) error {
 	subscriptionID, err := steps.resolveSubscriptionID(ctx, o.Subscription)
 	if err != nil {
 		return fmt.Errorf("resolve subscription %q: %w", o.Subscription, err)
+	}
+	requests := slices.Clone(o.requests)
+	for i := range requests {
+		for _, pool := range requests[i].Pools {
+			if pool.Subscriptions.E2E != o.Subscription {
+				return fmt.Errorf("pool %s/%s uses subscription %q, expected %q", requests[i].Environment, pool.Name, pool.Subscriptions.E2E, o.Subscription)
+			}
+		}
+		requests[i].SubscriptionID = subscriptionID
 	}
 	subscriptionIDs := []string{subscriptionID}
 	logger.Info("Preparing external subscription", "subscription", o.Subscription, "subscriptionID", subscriptionID, "environments", len(o.requests))
@@ -324,23 +363,23 @@ func (o *ReconcileExternalSubscriptionOptions) Run(ctx context.Context) error {
 		return err
 	}
 
-	for _, request := range o.requests {
+	for _, request := range requests {
 		if err := steps.applyContainers(ctx, request); err != nil {
 			return fmt.Errorf("apply E2E identity containers for %s: %w", request.Environment, err)
 		}
 	}
-	for _, request := range o.requests {
+	for _, request := range requests {
 		if err := steps.reconcileMockRoles(ctx, request, true); err != nil {
 			return fmt.Errorf("grant slot mock identities for %s: %w", request.Environment, err)
 		}
 	}
 
-	for _, request := range o.requests {
+	for _, request := range requests {
 		if err := steps.validateContainers(ctx, request); err != nil {
 			return fmt.Errorf("validate E2E identity containers for %s: %w", request.Environment, err)
 		}
 	}
-	for _, request := range o.requests {
+	for _, request := range requests {
 		if err := steps.reconcileMockRoles(ctx, request, false); err != nil {
 			return fmt.Errorf("validate slot mock identity grants for %s: %w", request.Environment, err)
 		}

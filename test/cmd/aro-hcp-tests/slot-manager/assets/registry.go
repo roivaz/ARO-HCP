@@ -41,6 +41,8 @@ const KindInfrastructureIdentities = slots.KindInfrastructureIdentities
 // PoolRequest supplies catalog data and options for pool provisioning or validation.
 // The registry scopes pools and inventories to each handler without changing capacity.
 type PoolRequest struct {
+	// SubscriptionID pins requests whose pools all target one resolved E2E subscription.
+	SubscriptionID string
 	// AssetInventories contains independent asset pools with whole-catalog capacities.
 	AssetInventories []slots.AssetInventory
 	// Environment selects the deployment environment.

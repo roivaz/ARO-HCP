@@ -135,6 +135,11 @@ func (h *Handler) resolvePools(ctx context.Context, request assets.PoolRequest) 
 	if err != nil {
 		return nil, nil, err
 	}
+	if request.SubscriptionID != "" {
+		resolveSubscriptionID = func(context.Context, string) (string, error) {
+			return request.SubscriptionID, nil
+		}
+	}
 	pools, err := resolveIdentityPools(ctx, request.Environment, request.Pools, unmanagedFilter(request), resolveSubscriptionID)
 	if err != nil {
 		return nil, nil, err
