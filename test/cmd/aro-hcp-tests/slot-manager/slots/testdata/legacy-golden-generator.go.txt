@@ -1,0 +1,148 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/Azure/ARO-HCP/test/cmd/aro-hcp-tests/slot-manager/slots"
+	"github.com/Azure/ARO-HCP/test/pkg/leaseenv"
+	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/util/sets"
+)
+
+type poolRecord struct {
+	Environment        string
+	Name               string
+	ProvisioningRegion string
+	PhysicalCount      int
+	Slots              []slots.ExpandedSlot
+	ProvisionedGroups  [][]string
+	Journal            []string
+	Exports            []string
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+func main() {
+	c, err := slots.LoadCatalog(os.Args[1])
+	must(err)
+	records := []poolRecord{}
+	inventories, err := c.AssetInventories()
+	must(err)
+	for _, env := range c.EnvironmentNames() {
+		for _, p := range c.Environments[env].Pools {
+			raw := slots.ExpandSlotsForPool(env, p)
+			r := poolRecord{Environment: env, Name: p.Name, ProvisioningRegion: p.EffectiveIdentityProvisioningRegion(), PhysicalCount: p.EffectiveIdentityContainerProvisioningCount(), Slots: raw}
+			for _, s := range raw {
+				r.ProvisionedGroups = append(r.ProvisionedGroups, s.ProvisionedIdentityContainerNames())
+				s.Subscriptions.E2E.ID = "e2e00000-0000-4000-8000-000000000001"
+				s.Subscriptions.Infrastructure.ID = "1f000000-0000-4000-8000-000000000002"
+				region := s.Region
+				if region == "" {
+					region = "westus3"
+				}
+				state := slots.AcquiredSlotState{Version: 2, DeployEnvironment: s.DeployEnvironment, RuntimeRegion: region, Slot: s, LeasedResourceName: s.ResourceName, Leases: slots.LeaseSet{Primary: slots.Lease{ResourceType: s.ResourceType, ResourceName: s.ResourceName}}}
+				for _, req := range s.AssetRequirements {
+					if req.Kind == slots.KindMockIdentities {
+						state.Slot.Assets.MockIdentities = &leaseenv.MockIdentityBundlePayload{SlotName: s.ResourceName, SubscriptionID: s.Subscriptions.E2E.ID,
+							MSI:             leaseenv.MockPrincipal{ClientID: "a1000000-0000-4000-8000-000000000001", PrincipalID: "a1000000-0000-4000-8000-000000000002", CertificateName: "fixture-msi"},
+							Backend:         leaseenv.MockPrincipal{ClientID: "a1000000-0000-4000-8000-000000000003", PrincipalID: "a1000000-0000-4000-8000-000000000004", CertificateName: "fixture-backend"},
+							ClustersService: leaseenv.MockPrincipal{ClientID: "a1000000-0000-4000-8000-000000000005", PrincipalID: "a1000000-0000-4000-8000-000000000006", CertificateName: "fixture-cs"}}
+					}
+					if req.Kind != slots.KindInfrastructureIdentities {
+						continue
+					}
+					inventory, ok := slots.AssetInventoryForRequirement(inventories, req)
+					if !ok {
+						panic("missing asset inventory")
+					}
+					groups := []string{}
+					leases := []slots.Lease{}
+					for i := 0; i < req.UnitsPerSlot; i++ {
+						name := inventory.ResourceName(i)
+						groups = append(groups, name)
+						leases = append(leases, slots.Lease{ResourceType: inventory.AssetPool.ResourceType, ResourceName: name})
+					}
+					state.Leases.Assets = map[slots.AssetKind][]slots.Lease{req.Kind: leases}
+					state.Slot.Assets.InfrastructureIdentities = &slots.ResolvedInfrastructureIdentities{Allocation: slots.AllocationLeased, ResourceGroups: groups, Identities: []string{"fixture-managed-identity"}}
+				}
+				must(state.ValidateForAdmission())
+				journal, err := yaml.Marshal(&state)
+				must(err)
+				r.Journal = append(r.Journal, string(journal))
+				exports := slots.NewRuntimeContractBuilder()
+				must(slots.AddCoreRuntimeExports(exports, &state, s.Subscriptions.E2E.Name, "/fixture/profile with spaces"))
+				r.Exports = append(r.Exports, string(exports.MarshalShell()))
+			}
+			records = append(records, r)
+		}
+	}
+	boskos, err := slots.ExpectedBoskosResources(c)
+	must(err)
+	types := slots.RenderBoskosTypesBlock(c)
+	resources, err := slots.RenderBoskosResourcesBlock(c)
+	must(err)
+	var callers struct {
+		Callers []struct {
+			Source string            `json:"source"`
+			Test   string            `json:"test"`
+			Env    map[string]string `json:"env"`
+		} `json:"callers"`
+	}
+	data, err := os.ReadFile(os.Args[2])
+	must(err)
+	must(json.Unmarshal(data, &callers))
+	candidates := map[string][]string{}
+	regions := map[string]map[string]string{}
+	for _, caller := range callers.Callers {
+		env, err := c.ResolveEnvironmentForDeployEnv(caller.Env["ARO_HCP_DEPLOY_ENV"])
+		must(err)
+		subscriptions := caller.Env["MULTISTAGE_PARAM_OVERRIDE_ALLOWED_SUBSCRIPTIONS"]
+		if subscriptions == "" {
+			subscriptions = caller.Env["ALLOWED_SUBSCRIPTIONS"]
+		}
+		split := func(s string) sets.Set[string] {
+			if s == "" {
+				return nil
+			}
+			return sets.New(strings.Split(s, ",")...)
+		}
+		pools, err := c.CandidatePools(env, split(subscriptions), split(caller.Env["ALLOWED_LOCATIONS"]), caller.Env["MULTISTAGE_PARAM_OVERRIDE_LOCATION"])
+		must(err)
+		names := []string{}
+		for _, p := range pools {
+			names = append(names, p.Name)
+		}
+		candidates[caller.Source+"#"+caller.Test] = names
+		mode, err := c.RegionModeForEnvironment(env)
+		must(err)
+		selection, err := resolveRegionSelection(c, env, mode, caller.Env["MULTISTAGE_PARAM_OVERRIDE_LOCATION"], caller.Env["LOCATION_WEIGHTS"], "1234567890")
+		must(err)
+		selected := map[string]string{}
+		for _, p := range pools {
+			region := selection.RuntimeRegion
+			if region == "" {
+				region = p.Region
+			}
+			selected[p.Name] = region
+		}
+		regions[caller.Source+"#"+caller.Test] = selected
+	}
+	result := struct {
+		Pools           []poolRecord
+		Assets          []slots.AssetInventory
+		Boskos          map[string][]string
+		BoskosTypes     string
+		BoskosResources string
+		Candidates      map[string][]string
+		Regions         map[string]map[string]string
+	}{records, inventories, boskos, types, resources, candidates, regions}
+	output, err := json.MarshalIndent(result, "", "  ")
+	must(err)
+	fmt.Println(string(output))
+}

@@ -1,0 +1,45 @@
+{
+  "catalog_commit": "56d2a6fb0745cfada8538b14249c4fb91d9dd9b2",
+  "catalog_path": "test/e2e-config/e2e-slots.yaml",
+  "catalog_sha256": "3610714da096f47ba19d454f8db0b1d3ca8677cffa6e05677056b13038feca6e",
+  "catalog_note": "Version-2 catalog on Azure/ARO-HCP main at the frozen commit, before the INT uksouth shard0 retirement (24 pools, 138 slots).",
+  "release_commit": "061a2637f0501a9d02c0d28f13116755f4193002",
+  "release_note": "openshift/release main f3e648f6fe08 plus the unmerged B0 change (draft PR openshift/release#89449, INT ALLOWED_LOCATIONS -> MULTISTAGE_PARAM_OVERRIDE_LOCATION), because B0 merges before Phase A.",
+  "canonical_callers": 56,
+  "build_callers": 31,
+  "import_callers": 25,
+  "caller_count_note": "legacy-callers-generator.py.txt reproduces the originally recorded 54 (31 build, 23 import) at openshift/release 81a17df231958bc893175ee2ab18eaf55e0b162d; the 56 here are the same scope at the later revision.",
+  "generator": "go run ./cmd/<harness> <catalog.yaml> <legacy-callers.json> from a checkout of catalog_commit; harness = legacy-golden-generator.go.txt (main.go) and legacy-region-generator.go.txt (region.go, declarations extracted verbatim from acquire.go at catalog_commit); no new implementation used",
+  "goldens": {
+    "legacy-v2-golden.json": "catalog_commit source and v2 catalog"
+  },
+  "determinism": {
+    "build_id": "1234567890",
+    "resolved_subscription_ids": [
+      "e2e00000-0000-4000-8000-000000000001",
+      "1f000000-0000-4000-8000-000000000002"
+    ],
+    "mock_identity_bundle": "fixed UUID/certificate fixture (a1000000-0000-4000-8000-00000000000N) for slots that declare mock_identities",
+    "asset_lease_outcome": "first UnitsPerSlot inventory resources in index order",
+    "runtime_region": "raw slot region when nonempty; westus3 otherwise (export/state fixture, not weighted selection)",
+    "state_validation": "ValidateForAdmission (state before admission output is published)",
+    "clock": "not used by expansion/state/export APIs"
+  },
+  "source_sha256": {
+    "test/cmd/aro-hcp-tests/slot-manager/slots/asset_pools.go": "ef5009167f640ccdc43ccde48772564169f4652edb0dc1267a87feec8ed6026f",
+    "test/cmd/aro-hcp-tests/slot-manager/slots/catalog.go": "c6bd371e253437818e45695beedfc7621aa6e187c3ee88ac4b0b9bb37dc54dbb",
+    "test/cmd/aro-hcp-tests/slot-manager/slots/e2e_identities.go": "21af83ce218364b6b5c6781555d75af9387a8156033355a4e8a0ed3ec6b2fd09",
+    "test/cmd/aro-hcp-tests/slot-manager/slots/generate_boskos.go": "457cd535fabccf117e0e5c98c8b55e28b6f012e6723f89db77774e6273a11f34",
+    "test/cmd/aro-hcp-tests/slot-manager/slots/lease_journal.go": "2ea9a211eb1dd67017f829c3e770e1ecfa55dd6742319276dd9eb46de345669b",
+    "test/cmd/aro-hcp-tests/slot-manager/slots/leaseproxy.go": "29cb01fafa6c4cdbe654c630f070d0b80d82985c5300bf15bf6bf1fd9d3d1bc9",
+    "test/cmd/aro-hcp-tests/slot-manager/slots/runtime_contract.go": "73dcc574b6a518e75b7c0fc8d80e9fb88bdd33cd9ede13e7c0642b234b5ee90b",
+    "test/cmd/aro-hcp-tests/slot-manager/slots/state.go": "22bf16edf8b83f3bad9c0874e1532a66b4c5fce5c3f52904588a866a2257d839",
+    "test/cmd/aro-hcp-tests/slot-manager/slots/vm_family_policy.go": "47e0e21c196553a7ae65ede8266f8d9c177b822c573fb94cdaa990408cd62dc0",
+    "test/cmd/aro-hcp-tests/slot-manager/acquire.go": "bbd0ce93d3cc5c1125ddf37fee982078fadb7b9c78804718ac2be9fd7fe3ddee"
+  },
+  "reproduction": [
+    "git worktree add --detach <dir> <catalog_commit>; add test/cmd/zz-golden-gen/{main.go,region.go} from the two .go.txt harnesses.",
+    "From <dir>/test: go run ./cmd/zz-golden-gen e2e-config/e2e-slots.yaml <legacy-callers.json> > legacy-v2-golden.json",
+    "python3 legacy-callers-generator.py.txt <release-repo> <rev> legacy-callers.json (needs a release checkout containing the B0 change)."
+  ]
+}

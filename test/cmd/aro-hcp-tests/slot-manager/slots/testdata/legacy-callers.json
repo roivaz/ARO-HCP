@@ -1,0 +1,743 @@
+{
+  "provenance": {
+    "release_commit": "061a2637f0501a9d02c0d28f13116755f4193002",
+    "canonical_scope": "ci-operator/config/Azure/ARO-HCP and ci-operator/config/openshift/hypershift; excludes mirrored openshift-priv configs",
+    "generation": "gen_callers.py: every test reaching ref aro-hcp-lease-acquire directly or via the aro-hcp-{hypershift-e2e,local-e2e,local-e2e-upgrade,persistent-e2e} workflows; env = workflow env overlaid by test env and step env (retained keys only); image_mode import when base_images contains aro-hcp-e2e-tests*, otherwise build.",
+    "build_id": "1234567890",
+    "source_sha256": {
+      "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml": "018870b889a2b26f33c025bf701b0ce56ffb039ddfb7788e6712a90c5d284431",
+      "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__capz-e2e.yaml": "57452651158a4c56a97db94a69d8632340dba0cbf76dd0023caabfbf18eedb78",
+      "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__e2e.yaml": "e027b0e8e6b755f9c598cd5dfcb278607ccb90d3b5b6cfee340cdc7c0646b951",
+      "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml": "9f9bcae49b30ca3910bade13f2bed99509ee69042ce8ece5a9a34347da626f37",
+      "ci-operator/config/openshift/hypershift/openshift-hypershift-main.yaml": "c2e165be986b1fc5f3e0c234a71b86cb059e2562bb0ea0e3af8ec8919dab7849",
+      "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.0.yaml": "9d0958f55e94bf687998cc6c81fba234d9528beaece5e3567e5e555138905e54",
+      "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.0__4-23.yaml": "247771df997eac61caa54c28661b3e2b84e4afda82f4599e20d12e13f2d8b806",
+      "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.0__periodics.yaml": "1c898024b05fab493a9f056843c4011fdd22d5b9e6c2f4e0d095e1bdc6655317",
+      "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.1.yaml": "c6b52b79a86c19b2733b5fbbfbf6b97627e18ab4179325479d5b0d85e5a1e529",
+      "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.1__periodics.yaml": "7eeef2da00abbb0ccfafb452dada7ddd8511b07c255ed704b905df6a62e394d3",
+      "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.2.yaml": "749989d9211379f2fe101fc7dd36b06074da04124eee7b8754a08bcd1017329a",
+      "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.2__periodics.yaml": "f8189a8733255914a6523f38f3d9a3c1112d7be3b27efe2f1ecbba925fa3bdb5",
+      "ci-operator/step-registry/aro-hcp/hypershift-e2e/aro-hcp-hypershift-e2e-workflow.yaml": "327874c6412107929898f8fcca574dbf4bd042ea03c3090d9cebe2a13665a663",
+      "ci-operator/step-registry/aro-hcp/local-e2e-upgrade/aro-hcp-local-e2e-upgrade-workflow.yaml": "1bd1743d2f4e6ab86fb1a4a072d4285baea4268c8678b2a86b5d1513de4e9d01",
+      "ci-operator/step-registry/aro-hcp/local-e2e/aro-hcp-local-e2e-workflow.yaml": "1e80907023bb5ffaca845e8c4af0760ea09cb98140b81a73d1baf00a6124a49b",
+      "ci-operator/step-registry/aro-hcp/persistent-e2e/aro-hcp-persistent-e2e-workflow.yaml": "46b013ab2d2dd644c05e82e44f154d52057538288b65862c6c790b26d68f71c5"
+    },
+    "retained_env_keys": [
+      "ALLOWED_LOCATIONS",
+      "ALLOWED_SUBSCRIPTIONS",
+      "ARO_HCP_DEPLOY_ENV",
+      "ARO_HCP_SLOT_MANAGER_LEASE_WAIT_INTERVAL",
+      "ARO_HCP_SLOT_MANAGER_MAX_WAIT_FOR_LEASE",
+      "BUILD_ID",
+      "CLUSTER_PROFILE_DIRS",
+      "LOCATION",
+      "LOCATION_WEIGHTS",
+      "MULTISTAGE_PARAM_OVERRIDE_ALLOWED_SUBSCRIPTIONS",
+      "MULTISTAGE_PARAM_OVERRIDE_LOCATION",
+      "VAULT_SECRET_PROFILE"
+    ]
+  },
+  "callers": [
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "integration-canary-arm-endpoint-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "stage-canary-arm-endpoint-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "stage-canary-arm-endpoint-e2e-parallel-slow",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "prod-canary-arm-endpoint-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "prod-canary-arm-endpoint-e2e-parallel-slow",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "integration-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "integration-e2e-parallel-slow",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "integration-e2e-parallel-all",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "integration-e2e-parallel-ocp-stable",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "integration-e2e-parallel-ocp-fast",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "integration-e2e-parallel-ocp-nightly",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "stage-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "stage-e2e-parallel-slow",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "stage-e2e-parallel-all",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "stage-e2e-parallel-ocp-stable",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "stage-e2e-parallel-ocp-fast",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "stage-e2e-parallel-ocp-nightly",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "prod-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "prod-e2e-parallel-slow",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "prod-e2e-parallel-ocp-stable",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "prod-e2e-parallel-ocp-fast",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "prod-e2e-parallel-ocp-nightly",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "e2e-parallel",
+      "workflow": "aro-hcp-local-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters (EA Subscription),ARO HCP E2E Hosted Clusters 2 (EA Subscription),ARO HCP E2E Hosted Clusters - Dev - 02,ARO HCP E2E Hosted Clusters - Dev - 03",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "LOCATION_WEIGHTS": "westus3=1,canadacentral=1,centralus=1"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "e2e-parallel-inplace-upgrade",
+      "workflow": "aro-hcp-local-e2e-upgrade",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Dev - 04",
+        "ARO_HCP_DEPLOY_ENV": "ci02",
+        "LOCATION_WEIGHTS": "westus3=1,canadacentral=1,centralus=1"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "e2e-parallel-ocp-nightly",
+      "workflow": "aro-hcp-local-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters (EA Subscription),ARO HCP E2E Hosted Clusters 2 (EA Subscription),ARO HCP E2E Hosted Clusters - Dev - 02,ARO HCP E2E Hosted Clusters - Dev - 03",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "LOCATION_WEIGHTS": "westus3=1,canadacentral=1,centralus=1"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main.yaml",
+      "test": "e2e-parallel-slow",
+      "workflow": "aro-hcp-local-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters (EA Subscription),ARO HCP E2E Hosted Clusters 2 (EA Subscription),ARO HCP E2E Hosted Clusters - Dev - 02,ARO HCP E2E Hosted Clusters - Dev - 03",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "LOCATION_WEIGHTS": "westus3=1,canadacentral=1,centralus=1"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__capz-e2e.yaml",
+      "test": "dev",
+      "workflow": "",
+      "inline_acquire": true,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters (EA Subscription),ARO HCP E2E Hosted Clusters 2 (EA Subscription),ARO HCP E2E Hosted Clusters - Dev - 02,ARO HCP E2E Hosted Clusters - Dev - 03",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "dev"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__e2e.yaml",
+      "test": "integration-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__e2e.yaml",
+      "test": "integration-e2e-parallel-all",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__e2e.yaml",
+      "test": "stage-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__e2e.yaml",
+      "test": "stage-e2e-parallel-all",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__e2e.yaml",
+      "test": "prod-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "build",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E,ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01,ARO HCP E2E Hosted Clusters - Prod - 02 (MCA Sponsorship),ARO HCP E2E Hosted Clusters - Prod - 03 (MCA Sponsorship),ARO HCP E2E Hosted Clusters - Prod - 04 (MCA Sponsorship),ARO HCP E2E Hosted Clusters - Prod - 05 (MCA Sponsorship)",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "CLUSTER_PROFILE_DIRS": "/var/run/aro-hcp-prod,/var/run/aro-hcp-prod-rh",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "integration-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "stage-e2e-parallel-all",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "stage-e2e-parallel-ocp-nightly",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "prod-e2e-parallel-all",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "brazilsouth",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "brazilsouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "prod-e2e-parallel-ocp-nightly",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "canadacentral",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "canadacentral",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "prod-e2e-parallel-ocp-candidate-4-20",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "prod-e2e-parallel-ocp-candidate-4-22",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "prod-e2e-parallel-ocp-candidate-5-0",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "integration-canary-arm-endpoint-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "int",
+        "LOCATION": "westus3",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "int-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "stage-canary-arm-endpoint-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "stage-canary-arm-endpoint-e2e-parallel-slow",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ARO_HCP_DEPLOY_ENV": "stg",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3",
+        "VAULT_SECRET_PROFILE": "stg-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "prod-canary-arm-endpoint-e2e-parallel",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/Azure/ARO-HCP/Azure-ARO-HCP-main__periodic.yaml",
+      "test": "prod-canary-arm-endpoint-e2e-parallel-slow",
+      "workflow": "aro-hcp-persistent-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "ARO HCP E2E Hosted Clusters - Prod - 00,ARO HCP E2E Hosted Clusters - Prod - 01",
+        "ARO_HCP_DEPLOY_ENV": "prod",
+        "LOCATION": "uksouth",
+        "VAULT_SECRET_PROFILE": "prod-rh"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-main.yaml",
+      "test": "e2e-aro-hcp",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-main.yaml",
+      "test": "e2e-aro-hcp-presubmit",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci02",
+        "LOCATION_WEIGHTS": "westus3=1,canadacentral=1,centralus=1"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.0.yaml",
+      "test": "e2e-aro-hcp",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.0__4-23.yaml",
+      "test": "e2e-aro-hcp",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.0__periodics.yaml",
+      "test": "e2e-aro-hcp",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.1.yaml",
+      "test": "e2e-aro-hcp",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.1.yaml",
+      "test": "e2e-aro-hcp-presubmit",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.1__periodics.yaml",
+      "test": "e2e-aro-hcp",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.2.yaml",
+      "test": "e2e-aro-hcp",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.2.yaml",
+      "test": "e2e-aro-hcp-presubmit",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    },
+    {
+      "source": "ci-operator/config/openshift/hypershift/openshift-hypershift-release-5.2__periodics.yaml",
+      "test": "e2e-aro-hcp",
+      "workflow": "aro-hcp-hypershift-e2e",
+      "inline_acquire": false,
+      "image_mode": "import",
+      "env": {
+        "ALLOWED_SUBSCRIPTIONS": "Hypershift Managed Azure",
+        "ARO_HCP_DEPLOY_ENV": "ci01",
+        "MULTISTAGE_PARAM_OVERRIDE_LOCATION": "westus3"
+      }
+    }
+  ]
+}

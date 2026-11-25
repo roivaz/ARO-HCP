@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Generate canonical acquisition-caller fixture from an openshift/release revision.
+usage: gen_callers.py RELEASE_REPO REV OUT.json
+Scope: ci-operator/config/Azure/ARO-HCP and ci-operator/config/openshift/hypershift (mirrored openshift-priv excluded).
+A caller is a ci-operator test that reaches ref aro-hcp-lease-acquire directly (inline step) or through
+one of the aro-hcp-{hypershift-e2e,local-e2e,local-e2e-upgrade,persistent-e2e} workflows."""
+import hashlib, json, subprocess, sys, yaml
+repo, rev, out = sys.argv[1:4]
+def git(*a):
+    return subprocess.run(["git","-C",repo,*a],check=True,capture_output=True,text=True).stdout
+RETAINED = ["ALLOWED_LOCATIONS","ALLOWED_SUBSCRIPTIONS","ARO_HCP_DEPLOY_ENV","ARO_HCP_SLOT_MANAGER_LEASE_WAIT_INTERVAL",
+ "ARO_HCP_SLOT_MANAGER_MAX_WAIT_FOR_LEASE","BUILD_ID","CLUSTER_PROFILE_DIRS","LOCATION","LOCATION_WEIGHTS",
+ "MULTISTAGE_PARAM_OVERRIDE_ALLOWED_SUBSCRIPTIONS","MULTISTAGE_PARAM_OVERRIDE_LOCATION","VAULT_SECRET_PROFILE"]
+ACQUIRE_REF = "aro-hcp-lease-acquire"
+WORKFLOWS = {}
+for name in ["hypershift-e2e","local-e2e","local-e2e-upgrade","persistent-e2e"]:
+    path = f"ci-operator/step-registry/aro-hcp/{name}/aro-hcp-{name}-workflow.yaml"
+    WORKFLOWS[f"aro-hcp-{name}"] = (path, yaml.safe_load(git("show",f"{rev}:{path}"))["workflow"])
+def steps_of(x): return (x or {}).get("pre") or [], (x or {}).get("test") or [], (x or {}).get("post") or []
+def has_acquire(steps): return any(s.get("ref")==ACQUIRE_REF for s in steps)
+files = [f for f in git("ls-tree","-r","--name-only",rev,"--","ci-operator/config/Azure/ARO-HCP","ci-operator/config/openshift/hypershift").split("\n")
+         if f.endswith(".yaml")]
+callers, hashes = [], {}
+for f in sorted(files):
+    raw = git("show",f"{rev}:{f}")
+    d = yaml.safe_load(raw)
+    base = d.get("base_images") or {}
+    mode = "import" if any(k.startswith("aro-hcp-e2e-tests") for k in base) else "build"
+    for t in d.get("tests") or []:
+        steps = (t.get("steps") or t.get("multi_stage_test") or {})
+        wf = steps.get("workflow") or ""
+        env = {}
+        inline = False
+        reaches = False
+        if wf in WORKFLOWS:
+            wpath, w = WORKFLOWS[wf]
+            hashes[wpath] = hashlib.sha256(git("show",f"{rev}:{wpath}").encode()).hexdigest()
+            pre,test,post = steps_of(w.get("steps"))
+            if has_acquire(pre): reaches = True; env.update((w.get("steps") or {}).get("env") or {})
+        tpre,ttest,tpost = steps_of(steps)
+        if has_acquire(tpre+ttest+tpost):
+            reaches = True; inline = wf not in WORKFLOWS
+        if not reaches: continue
+        env.update(steps.get("env") or {})
+        for s in tpre+ttest+tpost:
+            if s.get("ref")==ACQUIRE_REF: env.update(s.get("env") or {})
+        callers.append({"source":f,"test":t["as"],"workflow":wf,"inline_acquire":inline,"image_mode":mode,
+                        "env":{k:str(env[k]) for k in RETAINED if k in env}})
+        hashes[f] = hashlib.sha256(raw.encode()).hexdigest()
+result = {"provenance":{"release_commit":git("rev-parse",rev).strip(),
+  "canonical_scope":"ci-operator/config/Azure/ARO-HCP and ci-operator/config/openshift/hypershift; excludes mirrored openshift-priv configs",
+  "generation":"gen_callers.py: every test reaching ref aro-hcp-lease-acquire directly or via the aro-hcp-{hypershift-e2e,local-e2e,local-e2e-upgrade,persistent-e2e} workflows; env = workflow env overlaid by test env and step env (retained keys only); image_mode import when base_images contains aro-hcp-e2e-tests*, otherwise build.",
+  "build_id":"1234567890","source_sha256":dict(sorted(hashes.items())),"retained_env_keys":RETAINED},
+  "callers":callers}
+json.dump(result,open(out,"w"),indent=2); open(out,"a").write("\n")
+import collections
+print(len(callers), collections.Counter(c["image_mode"] for c in callers))
