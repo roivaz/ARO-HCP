@@ -21,25 +21,24 @@ import (
 	"strings"
 	"testing"
 
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	"github.com/Azure/ARO-HCP/test/pkg/vmfamily"
 )
 
 func TestCatalogVMFamilyPolicyPoolIsolation(t *testing.T) {
 	t.Parallel()
-	catalog := loadCatalogFromYAML(t, `version: 2
+	catalog := loadCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
     - name: limited
       subscriptions: {e2e: limited-sub}
-      region: westus3
+      regions: [westus3]
       slot_count: 2
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: westus3
           resource_group_prefix: limited-identities
           resource_group_count: 1
       vm_family_policy:
@@ -47,27 +46,28 @@ environments:
         helper_families: [standardDDSv5Family]
     - name: unrestricted
       subscriptions: {e2e: unrestricted-sub}
-      region: westus3
+      regions: [westus3]
       slot_count: 1
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: westus3
           resource_group_prefix: unrestricted-identities
           resource_group_count: 1
 `)
-	for _, subscription := range []string{"limited-sub", "unrestricted-sub"} {
-		pool, err := catalog.ResolvePool("dev", sets.New(subscription), nil, "westus3")
+	for _, name := range []string{"limited", "unrestricted"} {
+		pools, err := catalog.SelectPools("dev", "pool.name="+name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		want := vmfamily.VMFamilyPolicy{}
-		if subscription == "limited-sub" {
+		if name == "limited" {
 			want.WorkerFamilies = []string{"standardDSv5Family"}
 			want.HelperFamilies = []string{"standardDDSv5Family"}
 		}
-		for _, slot := range ExpandSlotsForPool("dev", pool) {
+		for _, slot := range ExpandSlotsForPool("dev", pools[0]) {
 			if got := slot.VMFamilyPolicy.Resolve("westus3"); !reflect.DeepEqual(got, want) {
-				t.Fatalf("subscription %q slot %q: got %+v, want %+v", subscription, slot.ResourceName, got, want)
+				t.Fatalf("pool %q slot %q: got %+v, want %+v", name, slot.ResourceName, got, want)
 			}
 		}
 	}

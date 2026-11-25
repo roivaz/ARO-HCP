@@ -61,8 +61,8 @@ func normalizeE2EIdentities(environmentName string, pool *Pool) error {
 		return fmt.Errorf("environment %q pool %q has invalid slot_assets.e2e_identities.resource_group_count %d", environmentName, pool.Name, asset.ResourceGroupCount)
 	case pool.IdentityContainerProvisioningCount < 0 || (pool.IdentityContainerProvisioningCount > 0 && pool.IdentityContainerProvisioningCount < asset.ResourceGroupCount):
 		return fmt.Errorf("environment %q pool %q identity_container_provisioning_count must be positive and at least resource_group_count %d", environmentName, pool.Name, asset.ResourceGroupCount)
-	case pool.RegionMode == RegionModeWeighted && asset.ProvisioningRegion == "":
-		return fmt.Errorf("environment %q weighted pool %q must declare slot_assets.e2e_identities.provisioning_region", environmentName, pool.Name)
+	case asset.ProvisioningRegion == "":
+		return fmt.Errorf("environment %q pool %q must declare slot_assets.e2e_identities.provisioning_region", environmentName, pool.Name)
 	case pool.SlotCount > math.MaxInt/asset.ResourceGroupCount:
 		return fmt.Errorf("environment %q pool %q dedicated identity demand overflows int", environmentName, pool.Name)
 	}
@@ -78,10 +78,10 @@ func (p Pool) IsUnmanaged() bool {
 }
 
 func (p Pool) EffectiveIdentityProvisioningRegion() string {
-	if asset := p.SlotAssets.E2EIdentities; asset != nil && asset.ProvisioningRegion != "" {
+	if asset := p.SlotAssets.E2EIdentities; asset != nil {
 		return asset.ProvisioningRegion
 	}
-	return p.Region
+	return ""
 }
 
 // EffectiveIdentityContainerProvisioningCount is the physical pool size, not the runtime lease budget.

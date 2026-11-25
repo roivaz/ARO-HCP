@@ -1,4 +1,4 @@
-version: 2
+version: 3
 asset_pools:
 - name: dev-infrastructure-identities
   kind: infrastructure_identities
@@ -22,7 +22,6 @@ environments:
     - name: shard0
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters (EA Subscription)"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -43,7 +42,6 @@ environments:
     - name: shard1
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters 2 (EA Subscription)"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -64,7 +62,6 @@ environments:
     - name: shard2
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Dev - 02"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -85,7 +82,6 @@ environments:
     - name: shard3
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Dev - 03"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -106,7 +102,6 @@ environments:
     - name: shard5
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Dev - 05 (MCA Sponsorship)"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -128,7 +123,6 @@ environments:
     - name: shard6
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Dev - 06 (MCA Sponsorship)"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -150,7 +144,6 @@ environments:
     - name: shard7
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Dev - 07 (MCA Sponsorship)"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -172,7 +165,6 @@ environments:
     - name: shard8
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Dev - 08 (MCA Sponsorship)"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -194,7 +186,6 @@ environments:
     - name: shard9
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Dev - 09 (MCA Sponsorship)"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -216,7 +207,6 @@ environments:
     - name: shard10
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Dev - 10 (MCA Sponsorship)"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -238,7 +228,6 @@ environments:
     - name: hypershift
       subscriptions:
         e2e: "Hypershift Managed Azure"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -283,7 +272,6 @@ environments:
     - name: shard4
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Dev - 04"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -307,7 +295,6 @@ environments:
     - name: hypershift
       subscriptions:
         e2e: "Hypershift Managed Azure"
-      region_mode: weighted
       regions:
       - westus3
       - centralus
@@ -339,20 +326,19 @@ environments:
     - name: shard0
       subscriptions:
         e2e: "ARO SRE Team - INT (EA Subscription 3)"
-      region: uksouth
-      region_mode: fixed
+      regions: [uksouth]
       resource_type: aro-hcp-int-shard0-slot
       slot_count: 1
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: uksouth
           resource_group_prefix: aro-hcp-msi-container-int-shard0
           resource_group_count: 20
     - name: westus3-shard0
       subscriptions:
         e2e: "ARO SRE Team - INT (EA Subscription 3)"
-      region: westus3
-      region_mode: fixed
+      regions: [westus3]
       resource_type: aro-hcp-int-westus3-shard0-slot
       slot_count: 1
       identity_container_provisioning_count: 100
@@ -364,6 +350,7 @@ environments:
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: westus3
           resource_group_prefix: aro-hcp-msi-container-int-westus3-shard0
           resource_group_count: 100
   stg:
@@ -373,8 +360,7 @@ environments:
     - name: shard0
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Stage - 00"
-      region: westus3
-      region_mode: fixed
+      regions: [westus3]
       resource_type: aro-hcp-stg-shard0-slot
       slot_count: 1
       identity_container_provisioning_count: 100
@@ -394,8 +380,7 @@ environments:
     - name: shard1
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Stage - 01 (MCA Sponsorship)"
-      region: westus3
-      region_mode: fixed
+      regions: [westus3]
       resource_type: aro-hcp-stg-shard1-slot
       slot_count: 1
       identity_container_provisioning_count: 100
@@ -428,8 +413,9 @@ environments:
     - name: shard0
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Prod - 00"
-      region: uksouth
-      region_mode: runtime-selected
+      placement:
+        default_region: uksouth
+        allow_undeclared: true
       resource_type: aro-hcp-prod-shard0-slot
       slot_count: 3
       vm_family_policy:
@@ -452,13 +438,15 @@ environments:
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: uksouth
           resource_group_prefix: aro-hcp-msi-container-prod
           resource_group_count: 25
     - name: shard1
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Prod - 01"
-      region: uksouth
-      region_mode: runtime-selected
+      placement:
+        default_region: uksouth
+        allow_undeclared: true
       resource_type: aro-hcp-prod-shard1-slot
       slot_count: 3
       vm_family_policy:
@@ -482,13 +470,15 @@ environments:
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: uksouth
           resource_group_prefix: aro-hcp-msi-container-prod
           resource_group_count: 25
     - name: shard2
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Prod - 02 (MCA Sponsorship)"
-      region: uksouth
-      region_mode: runtime-selected
+      placement:
+        default_region: uksouth
+        allow_undeclared: true
       resource_type: aro-hcp-prod-shard2-slot
       slot_count: 3
       identity_container_provisioning_count: 100
@@ -512,13 +502,15 @@ environments:
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: uksouth
           resource_group_prefix: aro-hcp-msi-container-prod
           resource_group_count: 25
     - name: shard3
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Prod - 03 (MCA Sponsorship)"
-      region: uksouth
-      region_mode: runtime-selected
+      placement:
+        default_region: uksouth
+        allow_undeclared: true
       resource_type: aro-hcp-prod-shard3-slot
       slot_count: 3
       identity_container_provisioning_count: 100
@@ -542,13 +534,15 @@ environments:
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: uksouth
           resource_group_prefix: aro-hcp-msi-container-prod
           resource_group_count: 25
     - name: shard4
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Prod - 04 (MCA Sponsorship)"
-      region: uksouth
-      region_mode: runtime-selected
+      placement:
+        default_region: uksouth
+        allow_undeclared: true
       resource_type: aro-hcp-prod-shard4-slot
       slot_count: 3
       identity_container_provisioning_count: 100
@@ -572,13 +566,15 @@ environments:
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: uksouth
           resource_group_prefix: aro-hcp-msi-container-prod
           resource_group_count: 25
     - name: shard5
       subscriptions:
         e2e: "ARO HCP E2E Hosted Clusters - Prod - 05 (MCA Sponsorship)"
-      region: uksouth
-      region_mode: runtime-selected
+      placement:
+        default_region: uksouth
+        allow_undeclared: true
       resource_type: aro-hcp-prod-shard5-slot
       slot_count: 3
       identity_container_provisioning_count: 100
@@ -602,6 +598,7 @@ environments:
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: uksouth
           resource_group_prefix: aro-hcp-msi-container-prod
           resource_group_count: 25
     # Test-Test tenant (MSFT) prod sub "ARO HCP E2E" (403d9de9). Cross-tenant, so
@@ -613,8 +610,9 @@ environments:
     - name: testtenant
       subscriptions:
         e2e: "ARO HCP E2E"
-      region: uksouth
-      region_mode: runtime-selected
+      placement:
+        default_region: uksouth
+        allow_undeclared: true
       resource_type: aro-hcp-prod-testtenant-slot
       slot_count: 4
       vm_family_policy:
@@ -626,6 +624,7 @@ environments:
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: uksouth
           provisioning: unmanaged
           resource_group_prefix: aro-hcp-msi-container-prod-testtenant
           resource_group_count: 25

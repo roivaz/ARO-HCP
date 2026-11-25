@@ -53,18 +53,19 @@ func (h *recordingPoolHandler) ValidatePools(ctx context.Context, request assets
 
 func TestAssetCommandsPreserveUnmanagedSelection(t *testing.T) {
 	t.Parallel()
-	const catalog = `version: 2
+	const catalog = `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01, infrastructure_subscription: infra}
     pools:
     - name: unmanaged
       subscriptions: {e2e: customer}
-      region: westus3
+      regions: [westus3]
       slot_count: 1
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: westus3
           provisioning: unmanaged
           resource_group_prefix: identities
           resource_group_count: 1

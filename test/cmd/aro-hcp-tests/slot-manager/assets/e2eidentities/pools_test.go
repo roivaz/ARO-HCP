@@ -52,15 +52,14 @@ func TestLoadIdentityPools(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	catalogPath := filepath.Join(catalogDir, "e2e-slots.yaml")
-	catalog := `version: 2
+	catalog := `version: 3
 environments:
   dev:
     deployment_environment: {name: ci00}
     pools:
       - name: aro-hcp-dev-westus3-slot
         subscriptions: {e2e: dev-sub-1}
-        region: westus3
-        region_mode: runtime-selected
+        placement: {default_region: westus3, allow_undeclared: true}
         resource_type: aro-hcp-dev-westus3-slot
         slot_count: 1
         slot_assets:
@@ -71,13 +70,13 @@ environments:
             resource_group_count: 2
       - name: aro-hcp-dev-eastus2-slot
         subscriptions: {e2e: dev-sub-2}
-        region: eastus2
-        region_mode: runtime-selected
+        placement: {default_region: eastus2, allow_undeclared: true}
         resource_type: aro-hcp-dev-eastus2-slot
         slot_count: 2
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: eastus2
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 1
 `
@@ -98,7 +97,7 @@ environments:
 		t.Fatalf("expected 2 pools, got %d", len(pools))
 	}
 
-	if pools[0].SubscriptionName != "dev-sub-1" || pools[0].Region != "westus3" || pools[0].ProvisioningRegion != "centralus" {
+	if pools[0].SubscriptionName != "dev-sub-1" || pools[0].ProvisioningRegion != "centralus" {
 		t.Fatalf("unexpected first pool: %+v", pools[0])
 	}
 	if pools[0].SubscriptionID != "00000000-0000-0000-0000-000000000001" {
@@ -108,7 +107,7 @@ environments:
 		t.Fatalf("unexpected first pool slots: %+v", pools[0].Slots)
 	}
 
-	if pools[1].SubscriptionName != "dev-sub-2" || pools[1].Region != "eastus2" || pools[1].ProvisioningRegion != "eastus2" {
+	if pools[1].SubscriptionName != "dev-sub-2" || pools[1].ProvisioningRegion != "eastus2" {
 		t.Fatalf("unexpected second pool: %+v", pools[1])
 	}
 	if pools[1].SubscriptionID != "00000000-0000-0000-0000-000000000002" {
@@ -124,31 +123,31 @@ func TestLoadIdentityPoolsSkipsUnmanagedByDefault(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	catalogPath := filepath.Join(catalogDir, "e2e-slots.yaml")
-	catalog := `version: 2
+	catalog := `version: 3
 environments:
   dev:
     deployment_environment: {name: ci00}
     pools:
       - name: aro-hcp-dev-westus3-slot
         subscriptions: {e2e: managed-sub}
-        region: westus3
-        region_mode: fixed
+        regions: [westus3]
         resource_type: aro-hcp-dev-westus3-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: westus3
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 1
       - name: aro-hcp-dev-eastus2-slot
         subscriptions: {e2e: unmanaged-sub}
-        region: eastus2
-        region_mode: fixed
+        regions: [eastus2]
         resource_type: aro-hcp-dev-eastus2-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: eastus2
             provisioning: unmanaged
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 1
@@ -179,31 +178,31 @@ func TestLoadIdentityPoolsIncludesUnmanagedWhenFiltered(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	catalogPath := filepath.Join(catalogDir, "e2e-slots.yaml")
-	catalog := `version: 2
+	catalog := `version: 3
 environments:
   dev:
     deployment_environment: {name: ci00}
     pools:
       - name: aro-hcp-dev-westus3-slot
         subscriptions: {e2e: managed-sub}
-        region: westus3
-        region_mode: fixed
+        regions: [westus3]
         resource_type: aro-hcp-dev-westus3-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: westus3
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 1
       - name: aro-hcp-dev-eastus2-slot
         subscriptions: {e2e: unmanaged-sub}
-        region: eastus2
-        region_mode: fixed
+        regions: [eastus2]
         resource_type: aro-hcp-dev-eastus2-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: eastus2
             provisioning: unmanaged
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 1
@@ -234,31 +233,31 @@ func TestLoadIdentityPoolsIgnoresEmptyFilterEntries(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	catalogPath := filepath.Join(catalogDir, "e2e-slots.yaml")
-	catalog := `version: 2
+	catalog := `version: 3
 environments:
   dev:
     deployment_environment: {name: ci00}
     pools:
       - name: aro-hcp-dev-westus3-slot
         subscriptions: {e2e: managed-sub}
-        region: westus3
-        region_mode: fixed
+        regions: [westus3]
         resource_type: aro-hcp-dev-westus3-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: westus3
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 1
       - name: aro-hcp-dev-eastus2-slot
         subscriptions: {e2e: unmanaged-sub}
-        region: eastus2
-        region_mode: fixed
+        regions: [eastus2]
         resource_type: aro-hcp-dev-eastus2-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: eastus2
             provisioning: unmanaged
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 1
@@ -292,20 +291,20 @@ func TestLoadIdentityPoolsResolutionFailure(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	catalogPath := filepath.Join(catalogDir, "e2e-slots.yaml")
-	catalog := `version: 2
+	catalog := `version: 3
 environments:
   dev:
     deployment_environment: {name: ci00}
     pools:
       - name: aro-hcp-dev-westus3-slot
         subscriptions: {e2e: unknown-sub}
-        region: westus3
-        region_mode: runtime-selected
+        placement: {default_region: westus3, allow_undeclared: true}
         resource_type: aro-hcp-dev-westus3-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: westus3
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 1
 `
@@ -326,31 +325,31 @@ func TestLoadIdentityPoolsDeduplicatesResolution(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	catalogPath := filepath.Join(catalogDir, "e2e-slots.yaml")
-	catalog := `version: 2
+	catalog := `version: 3
 environments:
   dev:
     deployment_environment: {name: ci00}
     pools:
       - name: aro-hcp-dev-westus3-slot
         subscriptions: {e2e: shared-sub}
-        region: westus3
-        region_mode: fixed
+        regions: [westus3]
         resource_type: aro-hcp-dev-westus3-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: westus3
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 1
       - name: aro-hcp-dev-eastus2-slot
         subscriptions: {e2e: shared-sub}
-        region: eastus2
-        region_mode: fixed
+        regions: [eastus2]
         resource_type: aro-hcp-dev-eastus2-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: eastus2
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 1
 `

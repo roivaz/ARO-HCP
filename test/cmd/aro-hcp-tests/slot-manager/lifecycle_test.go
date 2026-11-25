@@ -37,7 +37,7 @@ import (
 	"github.com/Azure/ARO-HCP/test/pkg/leaseenv"
 )
 
-const lifecycleCatalog = `version: 2
+const lifecycleCatalog = `version: 3
 asset_pools:
 - name: bundles
   kind: infrastructure_identities
@@ -48,12 +48,13 @@ environments:
     deployment_environment: {name: ci01, infrastructure_subscription: dev-infra}
     pools:
     - name: shard0
-      region: westus3
+      regions: [westus3]
       slot_count: 1
       subscriptions: {e2e: dev-e2e}
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: westus3
           resource_group_prefix: identities
           resource_group_count: 1
         infrastructure_identities:
@@ -64,12 +65,13 @@ environments:
     deployment_environment: {name: other-ci, infrastructure_subscription: dev-infra}
     pools:
     - name: shard1
-      region: centralus
+      regions: [centralus]
       slot_count: 3
       subscriptions: {e2e: other-e2e}
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: centralus
           resource_group_prefix: other-identities
           resource_group_count: 1
         infrastructure_identities:
@@ -159,6 +161,7 @@ func (h *lifecycleHandler) PublishLease(_ context.Context, request assets.LeaseR
 func lifecycleOptions(t *testing.T, catalog, server string, registry *assets.Registry) *RawAcquireOptions {
 	t.Helper()
 	return &RawAcquireOptions{
+		PoolSelector:        "pool.name",
 		ClusterProfileDir:   writeAcquireTestClusterProfile(t, "dev-e2e"),
 		Environment:         "dev",
 		SharedDir:           t.TempDir(),
@@ -278,7 +281,7 @@ func TestAcquireAssetAdmissionOptions(t *testing.T) {
 			defer server.Close()
 			options := lifecycleOptions(t, lifecycleCatalog, server.URL, registry)
 			options.AssetAdmissionOptions = tc.options
-			err = Acquire(t.Context(), options)
+			err = acquireSyntheticCatalog(t.Context(), options)
 			if tc.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), "--asset-admission-option") || !strings.Contains(err.Error(), tc.wantError) {
 					t.Fatalf("expected option error containing %q, got %v", tc.wantError, err)
@@ -348,7 +351,7 @@ func TestAcquireAdmissionDeadlineAndRollback(t *testing.T) {
 			if scenario != "default" {
 				options.AdmissionTimeout = wantTimeout.String()
 			}
-			err = Acquire(t.Context(), options)
+			err = acquireSyntheticCatalog(t.Context(), options)
 			if expires {
 				if !errors.Is(err, context.DeadlineExceeded) {
 					t.Fatalf("expected admission deadline failure, got %v", err)
@@ -490,7 +493,7 @@ func TestIndependentAssetLifecycleAndRollback(t *testing.T) {
 					t.Fatal("runtime contract was visible before all admission/publication passed")
 				}
 			}
-			err = Acquire(logr.NewContext(context.Background(), logger), options)
+			err = acquireSyntheticCatalog(logr.NewContext(context.Background(), logger), options)
 			wantSuccess := scenario == "success" || scenario == "skip e2e admission" || scenario == "skip infra admission" || scenario == "skip both admissions"
 			if loggedSuccess := strings.Contains(logs.String(), "Acquired slot and wrote shared artifacts"); loggedSuccess != wantSuccess {
 				t.Fatalf("success log does not match acquisition outcome: %s; error: %v", logs.String(), err)
@@ -529,7 +532,7 @@ func TestIndependentAssetLifecycleAndRollback(t *testing.T) {
 				if len(*released) != 0 || len(*acquired) != 3 {
 					t.Fatalf("incorrect acquisitions/releases: %v / %v", *acquired, *released)
 				}
-				if err := Acquire(context.Background(), options); err == nil || !strings.Contains(err.Error(), "already exists") {
+				if err := acquireSyntheticCatalog(context.Background(), options); err == nil || !strings.Contains(err.Error(), "already exists") {
 					t.Fatalf("second acquisition should not overwrite existing leases: %v", err)
 				}
 				if err := Release(context.Background(), &RawReleaseOptions{
@@ -597,15 +600,15 @@ func TestUnsupportedAssetsAndConflictingSelectorsFailBeforeNetwork(t *testing.T)
 			case "missing demanded infra binding":
 				options.CatalogPath = writeAcquireTestCatalogFromYAML(t, strings.Replace(lifecycleCatalog, "name: ci01, infrastructure_subscription: dev-infra", "name: ci01", 1))
 			case "unknown admission kind":
-				options.CatalogPath = writeAcquireTestCatalog(t, slots.RegionModeFixed, "westus3")
+				options.CatalogPath = writeAcquireTestCatalog(t, "westus3")
 				options.DisabledAssetAdmission = []string{"e2e-identities"}
 				expected = `--disable-asset-admission: unknown asset kind "e2e-identities"`
 			case "conflicting selector":
-				options.CatalogPath = writeAcquireTestCatalog(t, slots.RegionModeFixed, "westus3")
+				options.CatalogPath = writeAcquireTestCatalog(t, "westus3")
 				options.DeployEnv = "prod"
 				expected = "no candidate pool with deploy_env"
 			}
-			err := Acquire(context.Background(), options)
+			err := acquireSyntheticCatalog(context.Background(), options)
 			if err == nil || !strings.Contains(err.Error(), expected) {
 				t.Fatalf("expected selector/handler error %q, got %v", expected, err)
 			}
@@ -697,13 +700,13 @@ func TestPoolHandlersReceiveOnlyDeclaredPoolsAndReferencedInventories(t *testing
 
 func TestMissingE2EIdentitiesFailsBeforeAcquisition(t *testing.T) {
 	t.Parallel()
-	catalog := `version: 2
+	catalog := `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01, infrastructure_subscription: dev-infra}
     pools:
     - name: shard0
-      region: westus3
+      regions: [westus3]
       slot_count: 1
       subscriptions: {e2e: dev-e2e}
 `
@@ -716,7 +719,7 @@ environments:
 		t.Fatal("invalid catalog reached subscription resolution")
 		return slots.ResolvedSubscriptions{}, nil
 	}
-	if err := Acquire(context.Background(), options); err == nil || !strings.Contains(err.Error(), "must declare slot_assets.e2e_identities") {
+	if err := acquireSyntheticCatalog(context.Background(), options); err == nil || !strings.Contains(err.Error(), "must declare slot_assets.e2e_identities") {
 		t.Fatalf("expected missing required E2E identities rejection: %v", err)
 	}
 	if len(*acquired) != 0 || len(*released) != 0 {
@@ -734,18 +737,19 @@ environments:
 func TestE2EOnlySelectedPoolNeverResolvesInfrastructure(t *testing.T) {
 	t.Parallel()
 	e2ePool := `    - name: e2e-only
-      region: westus3
+      regions: [westus3]
       slot_count: 1
       subscriptions: {e2e: dev-e2e}
       slot_assets:
         e2e_identities:
           allocation: dedicated
+          provisioning_region: westus3
           resource_group_prefix: e2e-only
           resource_group_count: 1
 `
 	for _, scenario := range []string{"public", "optional binding", "mixed pools"} {
 		t.Run(scenario, func(t *testing.T) {
-			catalog := "version: 2\nenvironments:\n  dev:\n    deployment_environment: {name: stg}\n    pools:\n" + e2ePool
+			catalog := "version: 3\nenvironments:\n  dev:\n    deployment_environment: {name: stg}\n    pools:\n" + e2ePool
 			deploy := "stg"
 			switch scenario {
 			case "optional binding":
@@ -753,7 +757,7 @@ func TestE2EOnlySelectedPoolNeverResolvesInfrastructure(t *testing.T) {
 			case "mixed pools":
 				deploy = "ci01"
 				catalog = strings.Replace(lifecycleCatalog, "    pools:\n", "    pools:\n"+e2ePool, 1)
-				catalog = strings.Replace(catalog, "subscriptions: {e2e: dev-e2e}\n      slot_assets:\n        e2e_identities:\n          allocation: dedicated\n          resource_group_prefix: identities", "subscriptions: {e2e: other-consumer}\n      slot_assets:\n        e2e_identities:\n          allocation: dedicated\n          resource_group_prefix: identities", 1)
+				catalog = strings.Replace(catalog, "subscriptions: {e2e: dev-e2e}\n      slot_assets:\n        e2e_identities:\n          allocation: dedicated\n          provisioning_region: westus3\n          resource_group_prefix: identities", "subscriptions: {e2e: other-consumer}\n      slot_assets:\n        e2e_identities:\n          allocation: dedicated\n          provisioning_region: westus3\n          resource_group_prefix: identities", 1)
 			}
 			calls := []string{}
 			registry, err := assets.NewRegistry(&lifecycleHandler{kind: slots.KindE2EIdentities, calls: &calls})
@@ -765,7 +769,7 @@ func TestE2EOnlySelectedPoolNeverResolvesInfrastructure(t *testing.T) {
 			})
 			defer server.Close()
 			options := lifecycleOptions(t, catalog, server.URL, registry)
-			options.AllowedSubscriptions = []string{"dev-e2e"}
+			options.PoolSelector = "pool.name=e2e-only"
 			resolutions := 0
 			options.ResolveSubscriptions = func(_ context.Context, profile, gotDeploy, e2e, infra string) (slots.ResolvedSubscriptions, error) {
 				resolutions++
@@ -774,7 +778,7 @@ func TestE2EOnlySelectedPoolNeverResolvesInfrastructure(t *testing.T) {
 				}
 				return slots.ResolvedSubscriptions{E2E: slots.ResolvedSubscription{Name: e2e, ID: "e2e-id"}}, nil
 			}
-			if err := Acquire(t.Context(), options); err != nil {
+			if err := acquireSyntheticCatalog(t.Context(), options); err != nil {
 				t.Fatalf("E2E-only acquisition failed: %v", err)
 			}
 			if resolutions != 1 || len(*acquired) != 1 || len(*released) != 0 {
@@ -795,6 +799,91 @@ func TestE2EOnlySelectedPoolNeverResolvesInfrastructure(t *testing.T) {
 			wantCalls := []string{"resolve:e2e_identities", "admit:e2e_identities", "publish:e2e_identities"}
 			if !reflect.DeepEqual(calls, wantCalls) {
 				t.Fatalf("E2E-only lifecycle invoked wrong handlers: %v", calls)
+			}
+		})
+	}
+}
+
+func TestCanonicalAcquireAndReleasePublicBoundary(t *testing.T) {
+	for _, route := range []string{"legacy", "selector"} {
+		t.Run(route, func(t *testing.T) {
+			const subscription = "ARO HCP E2E Hosted Clusters - Prod - 00"
+			const resourceType = "aro-hcp-prod-shard0-slot"
+			const resourceName = resourceType + "-00"
+			server, acquired, released := newTestLeaseProxyServer(t, map[string][]leaseProxyReply{
+				resourceType: {successAcquireReply(resourceName)},
+			})
+			defer server.Close()
+			sharedDir := t.TempDir()
+			calls := []string{}
+			registry, err := assets.NewRegistry(&lifecycleHandler{
+				kind: slots.KindE2EIdentities, calls: &calls,
+				before: func(phase string, _ assets.LeaseRequest) {
+					journal, err := slots.LoadAcquiredSlotState(sharedDir)
+					if err != nil || journal.Leases.Primary.ResourceName != resourceName {
+						t.Fatalf("%s did not observe immediate primary journal: %+v, %v", phase, journal, err)
+					}
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			options := &RawAcquireOptions{
+				Environment: "prod", DeployEnv: "prod",
+				ClusterProfileDir: writeAcquireTestClusterProfile(t, subscription),
+				SharedDir:         sharedDir, LeaseProxyServerURL: server.URL,
+				LeaseProxyTimeout: time.Second, LeaseWaitInterval: time.Millisecond,
+				MaxWaitForLease: time.Second, AssetRegistry: registry,
+				AzureGlobalLoggerLogPath: "unused-test-logger",
+				SetupAzureGlobalLogger:   noopSetupAzureGlobalLogger,
+				ResolveSubscriptions: func(_ context.Context, _, deploy, e2e, infra string) (slots.ResolvedSubscriptions, error) {
+					if deploy != "prod" || e2e != subscription || infra != "" {
+						t.Fatalf("unexpected subscription request: %q %q %q", deploy, e2e, infra)
+					}
+					return slots.ResolvedSubscriptions{E2E: slots.ResolvedSubscription{Name: e2e, ID: "canonical-e2e-id"}}, nil
+				},
+			}
+			if route == "legacy" {
+				options.AllowedSubscriptions = []string{subscription}
+				options.SelectedLocation = "eastus2euap"
+			} else {
+				options.PoolSelector = "pool.name=shard0"
+				options.PlacementRegion = "eastus2euap"
+			}
+			if err := Acquire(t.Context(), options); err != nil {
+				t.Fatal(err)
+			}
+			state, err := slots.LoadAcquiredSlotState(sharedDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if state.RuntimeRegion != "eastus2euap" || state.Slot.Region != "uksouth" || state.LeasedResourceName != resourceName || state.Leases.Primary.ResourceName != resourceName {
+				t.Fatalf("unexpected canonical journal: %+v", state)
+			}
+			envPath, err := slots.EnvFile(sharedDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			env, err := os.ReadFile(envPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, export := range []string{"export SELECTED_LOCATION='eastus2euap'", "export CUSTOMER_SUBSCRIPTION='" + subscription + "'", "export ARO_HCP_DEPLOY_ENV='prod'"} {
+				if !strings.Contains(string(env), export) {
+					t.Fatalf("missing %s in runtime exports", export)
+				}
+			}
+			if !reflect.DeepEqual(*acquired, []string{resourceType}) || len(*released) != 0 {
+				t.Fatalf("unexpected lease calls: %v / %v", *acquired, *released)
+			}
+			if err := Release(t.Context(), &RawReleaseOptions{SharedDir: sharedDir, LeaseProxyServerURL: server.URL, LeaseProxyTimeout: time.Second}); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(*released, []string{resourceName}) {
+				t.Fatalf("release did not use recorded name: %v", *released)
+			}
+			if _, err := slots.LoadAcquiredSlotState(sharedDir); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("release retained journal: %v", err)
 			}
 		})
 	}

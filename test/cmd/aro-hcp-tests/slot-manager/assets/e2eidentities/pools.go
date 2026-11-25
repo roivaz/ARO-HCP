@@ -31,7 +31,6 @@ type subscriptionIDResolverFunc func(ctx context.Context, name string) (string, 
 
 type identityPool struct {
 	Environment             string
-	Region                  string
 	ProvisioningRegion      string
 	SubscriptionName        string
 	SubscriptionID          string
@@ -71,7 +70,6 @@ func resolveIdentityPools(ctx context.Context, environment string, catalogPools 
 		}
 		pools = append(pools, identityPool{
 			Environment:             environment,
-			Region:                  pool.Region,
 			ProvisioningRegion:      pool.EffectiveIdentityProvisioningRegion(),
 			SubscriptionName:        subscriptionName,
 			SubscriptionID:          subscriptionID,

@@ -25,7 +25,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const independentCatalog = `version: 2
+const independentCatalog = `version: 3
 asset_pools:
 - name: bundles
   kind: infrastructure_identities
@@ -36,11 +36,11 @@ environments:
     deployment_environment: {name: ci01, infrastructure_subscription: infra}
     pools:
     - name: shard0
-      region: westus3
+      regions: [westus3]
       slot_count: 2
       subscriptions: {e2e: customer}
       slot_assets:
-        e2e_identities: {allocation: dedicated, resource_group_prefix: identities, resource_group_count: 1}
+        e2e_identities: {allocation: dedicated, provisioning_region: westus3, resource_group_prefix: identities, resource_group_count: 1}
         infrastructure_identities:
           allocation: leased
           asset_pool: bundles
@@ -49,11 +49,11 @@ environments:
     deployment_environment: {name: other-ci, infrastructure_subscription: infra}
     pools:
     - name: shard1
-      region: centralus
+      regions: [centralus]
       slot_count: 3
       subscriptions: {e2e: other-customer}
       slot_assets:
-        e2e_identities: {allocation: dedicated, resource_group_prefix: other-identities, resource_group_count: 1}
+        e2e_identities: {allocation: dedicated, provisioning_region: centralus, resource_group_prefix: other-identities, resource_group_count: 1}
         infrastructure_identities:
           allocation: leased
           asset_pool: bundles
@@ -85,7 +85,7 @@ func TestAssetInventoryContainsCanonicalNames(t *testing.T) {
 func TestAssetInventoryAggregatesWholeCatalog(t *testing.T) {
 	t.Parallel()
 	catalog := loadCatalogFromYAML(t, independentCatalog)
-	pools, err := catalog.CandidatePools("dev", nil, nil, "")
+	pools, err := catalog.SelectPools("dev", "")
 	if err != nil || len(pools) != 1 {
 		t.Fatalf("selecting one consumer: %v, %v", pools, err)
 	}
@@ -105,25 +105,25 @@ func TestAssetInventoryAggregatesWholeCatalog(t *testing.T) {
 func TestRejectsObsoleteAndInvalidCatalogs(t *testing.T) {
 	t.Parallel()
 	tests := []struct{ name, from, to, want string }{
-		{"missing version", "version: 2", "", "unsupported catalog version 0"},
-		{"old version", "version: 2", "version: 1", "unsupported catalog version 1"},
-		{"future version", "version: 2", "version: 3", "unsupported catalog version 3"},
-		{"pool deploy env", "      region: westus3", "      deploy_env: prod\n      region: westus3", "deploy_env"},
+		{"missing version", "version: 3", "", "unsupported catalog version 0"},
+		{"old version", "version: 3", "version: 1", "unsupported catalog version 1"},
+		{"future version", "version: 3", "version: 4", "unsupported catalog version 4"},
+		{"pool deploy env", "      regions: [westus3]", "      deploy_env: prod\n      regions: [westus3]", "deploy_env"},
 		{"pool infrastructure", "{e2e: customer}", "{e2e: customer, infrastructure: infra}", "infrastructure"},
-		{"legacy subscription", "      region: westus3", "      subscription_name: customer\n      region: westus3", "field subscription_name not found"},
-		{"legacy identity count", "      region: westus3", "      identity_container_count: 1\n      region: westus3", "field identity_container_count not found"},
+		{"legacy subscription", "      regions: [westus3]", "      subscription_name: customer\n      regions: [westus3]", "field subscription_name not found"},
+		{"legacy identity count", "      regions: [westus3]", "      identity_container_count: 1\n      regions: [westus3]", "field identity_container_count not found"},
 		{"plural binding", "    deployment_environment: {name: ci01, infrastructure_subscription: infra}", "    deploy_envs: [ci01]", "deploy_envs"},
 		{"missing binding", "    deployment_environment: {name: ci01, infrastructure_subscription: infra}", "", "deployment_environment"},
 		{"missing deployment name", "name: ci01, infrastructure_subscription: infra", "infrastructure_subscription: infra", "deployment_environment.name"},
 		{"missing E2E subscription", "subscriptions: {e2e: customer}", "subscriptions: {}", "subscriptions.e2e"},
-		{"missing E2E identities", "        e2e_identities: {allocation: dedicated, resource_group_prefix: identities, resource_group_count: 1}\n", "", "must declare slot_assets.e2e_identities"},
-		{"null E2E identities", "e2e_identities: {allocation: dedicated, resource_group_prefix: identities, resource_group_count: 1}", "e2e_identities: null", "must declare slot_assets.e2e_identities"},
+		{"missing E2E identities", "        e2e_identities: {allocation: dedicated, provisioning_region: westus3, resource_group_prefix: identities, resource_group_count: 1}\n", "", "must declare slot_assets.e2e_identities"},
+		{"null E2E identities", "e2e_identities: {allocation: dedicated, provisioning_region: westus3, resource_group_prefix: identities, resource_group_count: 1}", "e2e_identities: null", "e2e_identities must be a mapping"},
 		{"missing demanded infrastructure binding", "name: ci01, infrastructure_subscription: infra", "name: ci01", "deployment_environment.infrastructure_subscription"},
 		{"blank demanded infrastructure binding", "name: ci01, infrastructure_subscription: infra", "name: ci01, infrastructure_subscription: '  '", "deployment_environment.infrastructure_subscription"},
 		{"deployment path traversal", "name: ci01,", "name: ../../outside,", "invalid deployment environment name"},
 		{"deployment backslash traversal", "name: ci01,", `name: '..\..\outside',`, "invalid deployment environment name"},
 		{"deployment path separator", "name: ci01,", "name: dev/ci01,", "invalid deployment environment name"},
-		{"unknown field", "      region: westus3", "      mystery: true\n      region: westus3", "mystery"},
+		{"unknown field", "      regions: [westus3]", "      mystery: true\n      regions: [westus3]", "mystery"},
 		{"unknown asset declaration", "        infrastructure_identities:", "        imaginary_identities:", "imaginary_identities"},
 		{"missing asset pool", "asset_pool: bundles", "asset_pool: missing", "missing asset pool"},
 		{"unused asset pool", "        infrastructure_identities:\n          allocation: leased\n          asset_pool: bundles\n", "", "unused"},
@@ -182,11 +182,11 @@ func TestMixedPoolsRequireInfrastructureOnlyForConsumers(t *testing.T) {
 	t.Parallel()
 	input := strings.Replace(independentCatalog, "    pools:\n", `    pools:
     - name: e2e-only
-      region: westus3
+      regions: [westus3]
       slot_count: 1
       subscriptions: {e2e: e2e-only}
       slot_assets:
-        e2e_identities: {allocation: dedicated, resource_group_prefix: e2e-only, resource_group_count: 1}
+        e2e_identities: {allocation: dedicated, provisioning_region: westus3, resource_group_prefix: e2e-only, resource_group_count: 1}
 `, 1)
 	catalog := loadCatalogFromYAML(t, input)
 	pools := catalog.Environments["dev"].Pools
@@ -226,14 +226,14 @@ func TestDedicatedIdentityPrefixesRemainDistinct(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			pool := func(name, prefix, subscription string) Pool {
 				return Pool{
-					Name: name, Region: "westus3", SlotCount: 2,
+					Name: name, Regions: []string{"westus3"}, SlotCount: 2,
 					Subscriptions: PoolSubscriptions{E2E: subscription},
 					SlotAssets: SlotAssets{E2EIdentities: &E2EIdentitiesAsset{
-						Allocation: AllocationDedicated, ResourceGroupPrefix: prefix, ResourceGroupCount: 102,
+						Allocation: AllocationDedicated, ProvisioningRegion: "westus3", ResourceGroupPrefix: prefix, ResourceGroupCount: 102,
 					}},
 				}
 			}
-			catalog := &Catalog{Version: 2, Environments: map[string]Environment{
+			catalog := &Catalog{Version: 3, Environments: map[string]Environment{
 				"dev": {
 					DeploymentEnvironment: DeploymentEnvironment{Name: "ci01", InfrastructureSubscription: "infra"},
 					Pools:                 []Pool{pool("first", "foo", "customer"), pool("second", test.secondPrefix, test.subscription)},

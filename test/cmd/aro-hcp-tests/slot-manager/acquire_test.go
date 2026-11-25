@@ -35,7 +35,6 @@ import (
 	"github.com/Azure/ARO-HCP/test/cmd/aro-hcp-tests/slot-manager/assets"
 	"github.com/Azure/ARO-HCP/test/cmd/aro-hcp-tests/slot-manager/assets/infrastructureidentities"
 	"github.com/Azure/ARO-HCP/test/cmd/aro-hcp-tests/slot-manager/slots"
-	"github.com/Azure/ARO-HCP/test/pkg/leaseenv"
 )
 
 func TestAcquireAdmissionFlagAndEnvironment(t *testing.T) {
@@ -120,12 +119,13 @@ func TestResolveLeasedSlot(t *testing.T) {
 	opts := &AcquireOptions{
 		completedAcquireOptions: &completedAcquireOptions{
 			PoolEnvironment: "dev",
+			PlacementPlan:   acquisitionPlan{regions: map[string]string{"dev": "westus3"}},
 		},
 	}
 	pool := slots.Pool{
 		Name:          "dev",
 		Subscriptions: slots.PoolSubscriptions{E2E: "dev-subscription"},
-		Region:        "westus3",
+		Regions:       []string{"westus3"},
 		ResourceType:  "aro-hcp-dev-westus3-slot",
 		SlotCount:     2,
 		SlotAssets: slots.SlotAssets{E2EIdentities: &slots.E2EIdentitiesAsset{
@@ -154,6 +154,7 @@ func TestAcquireRunRejectsUnsupportedInfrastructureBundleCountBeforeLease(t *tes
 		t.Fatal(err)
 	}
 	options := &AcquireOptions{completedAcquireOptions: &completedAcquireOptions{
+		PlacementPlan: acquisitionPlan{regions: map[string]string{"dev-slot": "westus3"}},
 		CandidatePools: []slots.Pool{{
 			Name: "dev-slot", ResourceType: "aro-hcp-dev-slot",
 			SlotAssets: slots.SlotAssets{
@@ -179,12 +180,13 @@ func TestResolveLeasedSlotRejectsResourceOutsideSelectedPool(t *testing.T) {
 	opts := &AcquireOptions{
 		completedAcquireOptions: &completedAcquireOptions{
 			PoolEnvironment: "dev",
+			PlacementPlan:   acquisitionPlan{regions: map[string]string{"dev": "westus3"}},
 		},
 	}
 	pool := slots.Pool{
 		Name:          "dev",
 		Subscriptions: slots.PoolSubscriptions{E2E: "dev-subscription"},
-		Region:        "westus3",
+		Regions:       []string{"westus3"},
 		ResourceType:  "aro-hcp-dev-westus3-slot",
 		SlotCount:     2,
 		SlotAssets: slots.SlotAssets{E2EIdentities: &slots.E2EIdentitiesAsset{
@@ -198,158 +200,6 @@ func TestResolveLeasedSlotRejectsResourceOutsideSelectedPool(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not part of selected pool") {
 		t.Fatalf("expected selected pool mismatch error, got %v", err)
-	}
-}
-
-func TestAcquireCompleteRegionModeMatrix(t *testing.T) {
-	fixedRegion := "westus3"
-	alternateRegion := "eastus2"
-
-	type testCase struct {
-		regionMode         slots.RegionMode
-		allowedLocations   string
-		override           string
-		wantRuntimeRegion  string
-		wantPoolRegion     string
-		wantErrorSubstring string
-	}
-
-	cases := []testCase{
-		{
-			regionMode:        slots.RegionModeFixed,
-			allowedLocations:  "",
-			override:          "",
-			wantRuntimeRegion: fixedRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-		{
-			regionMode:        slots.RegionModeFixed,
-			allowedLocations:  fixedRegion,
-			override:          "",
-			wantRuntimeRegion: fixedRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-		{
-			regionMode:        slots.RegionModeFixed,
-			allowedLocations:  strings.Join([]string{fixedRegion, alternateRegion}, ","),
-			override:          "",
-			wantRuntimeRegion: fixedRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-		{
-			regionMode:         slots.RegionModeFixed,
-			allowedLocations:   alternateRegion,
-			override:           "",
-			wantErrorSubstring: "no pool found",
-		},
-		{
-			regionMode:        slots.RegionModeFixed,
-			allowedLocations:  fixedRegion,
-			override:          fixedRegion,
-			wantRuntimeRegion: fixedRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-		{
-			regionMode:         slots.RegionModeFixed,
-			allowedLocations:   fixedRegion,
-			override:           alternateRegion,
-			wantErrorSubstring: "no pool found",
-		},
-		{
-			regionMode:        slots.RegionModeRuntimeSelected,
-			allowedLocations:  "",
-			override:          "",
-			wantRuntimeRegion: fixedRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-		{
-			regionMode:        slots.RegionModeRuntimeSelected,
-			allowedLocations:  fixedRegion,
-			override:          "",
-			wantRuntimeRegion: fixedRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-		{
-			regionMode:        slots.RegionModeRuntimeSelected,
-			allowedLocations:  alternateRegion,
-			override:          "",
-			wantRuntimeRegion: fixedRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-		{
-			regionMode:        slots.RegionModeRuntimeSelected,
-			allowedLocations:  strings.Join([]string{fixedRegion, alternateRegion}, ","),
-			override:          "",
-			wantRuntimeRegion: fixedRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-		{
-			regionMode:        slots.RegionModeRuntimeSelected,
-			allowedLocations:  "",
-			override:          alternateRegion,
-			wantRuntimeRegion: alternateRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-		{
-			regionMode:        slots.RegionModeRuntimeSelected,
-			allowedLocations:  fixedRegion,
-			override:          alternateRegion,
-			wantRuntimeRegion: alternateRegion,
-			wantPoolRegion:    fixedRegion,
-		},
-	}
-
-	for _, tc := range cases {
-		testName := fmt.Sprintf(
-			"regionMode=%s/allowedLocations=%q/override=%q",
-			tc.regionMode,
-			tc.allowedLocations,
-			tc.override,
-		)
-		t.Run(testName, func(t *testing.T) {
-			clusterProfileDir := writeAcquireTestClusterProfile(t, "ARO HCP E2E Hosted Clusters (EA Subscription)")
-			catalogPath := writeAcquireTestCatalog(t, tc.regionMode, fixedRegion)
-
-			t.Setenv("CLUSTER_PROFILE_DIR", clusterProfileDir)
-			t.Setenv(leaseenv.RuntimeDeployEnvironment, "ci01")
-			t.Setenv("SHARED_DIR", t.TempDir())
-			t.Setenv("LEASE_PROXY_SERVER_URL", "http://lease-proxy.example.com")
-			t.Setenv("ALLOWED_LOCATIONS", tc.allowedLocations)
-			t.Setenv("MULTISTAGE_PARAM_OVERRIDE_LOCATION", tc.override)
-
-			opts := DefaultAcquireOptions()
-			opts.CatalogPath = catalogPath
-			opts.SetupAzureGlobalLogger = noopSetupAzureGlobalLogger
-
-			validated, err := opts.Validate()
-			if err != nil {
-				t.Fatalf("expected options validation to succeed: %v", err)
-			}
-
-			completed, err := validated.Complete(context.Background())
-			if tc.wantErrorSubstring != "" {
-				if err == nil {
-					t.Fatalf("expected completion to fail with %q", tc.wantErrorSubstring)
-				}
-				if !strings.Contains(err.Error(), tc.wantErrorSubstring) {
-					t.Fatalf("expected completion error to contain %q, got %v", tc.wantErrorSubstring, err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("expected completion to succeed: %v", err)
-			}
-
-			if got := len(completed.CandidatePools); got != 1 {
-				t.Fatalf("expected exactly one candidate pool, got %d", got)
-			}
-			if got := completed.runtimeRegionForPool(completed.CandidatePools[0]); got != tc.wantRuntimeRegion {
-				t.Fatalf("expected runtime region %q, got %q", tc.wantRuntimeRegion, got)
-			}
-			if completed.CandidatePools[0].Region != tc.wantPoolRegion {
-				t.Fatalf("expected selected pool region %q, got %q", tc.wantPoolRegion, completed.CandidatePools[0].Region)
-			}
-		})
 	}
 }
 
@@ -397,14 +247,8 @@ func TestResolveRegionSelectionWeightedOverride(t *testing.T) {
 	t.Parallel()
 
 	catalog := loadWeightedAcquireTestCatalog(t)
-	selection, err := resolveRegionSelection(
-		catalog,
-		"dev",
-		slots.RegionModeWeighted,
-		"canadacentral",
-		"not-valid-and-must-be-ignored",
-		"",
-	)
+	plan, err := planAcquisition(catalog, "dev", acquireRequest{placement: "canadacentral"}, nil, "not-valid-and-must-be-ignored", "")
+	selection := plan.selection
 	if err != nil {
 		t.Fatalf("expected valid override to bypass weighted inputs: %v", err)
 	}
@@ -418,11 +262,11 @@ func TestResolveRegionSelectionWeightedOverride(t *testing.T) {
 		t.Fatalf("expected override path not to use a selection key, got %q", selection.SelectionKeySource)
 	}
 
-	_, err = resolveRegionSelection(catalog, "dev", slots.RegionModeWeighted, "eastus2", "", "")
+	_, err = planAcquisition(catalog, "dev", acquireRequest{placement: "eastus2"}, nil, "", "")
 	if err == nil {
 		t.Fatal("expected override outside the catalog regions to fail")
 	}
-	if !strings.Contains(err.Error(), "is not allowed") {
+	if !strings.Contains(err.Error(), "hard placement is not declared by pool") {
 		t.Fatalf("expected invalid override error, got %v", err)
 	}
 }
@@ -443,10 +287,8 @@ func TestResolveRegionSelectionWeightedDeterministic(t *testing.T) {
 		t.Run(tc.buildID, func(t *testing.T) {
 			t.Parallel()
 			selection, err := resolveRegionSelection(
-				catalog,
+				catalog.Environments["dev"].Pools[0].Regions,
 				"dev",
-				slots.RegionModeWeighted,
-				"",
 				"canadacentral=1,westus3=1,centralus=1",
 				tc.buildID,
 			)
@@ -530,6 +372,7 @@ func TestAcquireCompleteWeightedRequiresInputsWithoutOverride(t *testing.T) {
 	catalogPath := writeWeightedAcquireTestCatalog(t)
 	baseOptions := func() *RawAcquireOptions {
 		return &RawAcquireOptions{
+			PoolSelector:        "pool.name",
 			ClusterProfileDir:   clusterProfileDir,
 			DeployEnv:           "ci01",
 			SharedDir:           t.TempDir(),
@@ -616,7 +459,7 @@ func TestDefaultAcquireOptionsDoesNotUseLegacyLocationForSelection(t *testing.T)
 	}
 }
 
-func TestDefaultAcquireOptionsOverrideSuppressesAllowedLocationDefault(t *testing.T) {
+func TestDefaultAcquireOptionsKeepsAllowedLocationsForRejectionWhenOverrideIsSet(t *testing.T) {
 	t.Setenv("ALLOWED_LOCATIONS", "centralus, eastus2")
 	t.Setenv("MULTISTAGE_PARAM_OVERRIDE_LOCATION", "westus3")
 
@@ -625,8 +468,11 @@ func TestDefaultAcquireOptionsOverrideSuppressesAllowedLocationDefault(t *testin
 	if opts.SelectedLocation != "westus3" {
 		t.Fatalf("expected selected location %q, got %q", "westus3", opts.SelectedLocation)
 	}
-	if got := len(opts.AllowedLocations); got != 0 {
-		t.Fatalf("expected allowed locations to be ignored when override is set, got %v", opts.AllowedLocations)
+	if got, want := opts.AllowedLocations, []string{"centralus", "eastus2"}; !equalStrings(got, want) {
+		t.Fatalf("the retired allowlist must stay visible so it is rejected, got %v want %v", got, want)
+	}
+	if _, err := opts.decodeAcquireRequest(); err == nil || !strings.Contains(err.Error(), "retired") {
+		t.Fatalf("expected the retired allowlist to be rejected even with an override, got %v", err)
 	}
 }
 
@@ -634,42 +480,42 @@ func TestAcquireRunFixedModeFallsBackWithinRequestedRegion(t *testing.T) {
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-b")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
       - name: aro-hcp-dev-centralus-b-slot
         subscriptions: {e2e: dev-sub-b}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-b-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 2
       - name: aro-hcp-dev-canadacentral-c-slot
         subscriptions: {e2e: dev-sub-c}
-        region: canadacentral
-        region_mode: fixed
+        regions: [canadacentral]
         resource_type: aro-hcp-dev-canadacentral-c-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: canadacentral
             resource_group_prefix: aro-hcp-msi-container-dev-c
             resource_group_count: 2
 `)
@@ -688,7 +534,7 @@ environments:
 	err := acquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           sharedDir,
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -736,31 +582,31 @@ func TestAcquireRunFallsBackWhenCandidatePoolTimesOut(t *testing.T) {
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-b")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
       - name: aro-hcp-dev-centralus-b-slot
         subscriptions: {e2e: dev-sub-b}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-b-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 2
 `)
@@ -779,7 +625,7 @@ environments:
 	err := acquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           sharedDir,
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -812,31 +658,31 @@ func TestAcquireRunRuntimeSelectedFallsBackAcrossSubscriptions(t *testing.T) {
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "prod-sub-b")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   prod:
     deployment_environment: {name: prod}
     pools:
       - name: aro-hcp-prod-shard0-slot
         subscriptions: {e2e: prod-sub-a}
-        region: uksouth
-        region_mode: runtime-selected
+        placement: {default_region: uksouth, allow_undeclared: true}
         resource_type: aro-hcp-prod-shard0-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: uksouth
             resource_group_prefix: aro-hcp-msi-container-prod-a
             resource_group_count: 2
       - name: aro-hcp-prod-shard1-slot
         subscriptions: {e2e: prod-sub-b}
-        region: uksouth
-        region_mode: runtime-selected
+        placement: {default_region: uksouth, allow_undeclared: true}
         resource_type: aro-hcp-prod-shard1-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: uksouth
             resource_group_prefix: aro-hcp-msi-container-prod-b
             resource_group_count: 2
 `)
@@ -853,6 +699,7 @@ environments:
 
 	sharedDir := t.TempDir()
 	err := acquireForTest(t, &RawAcquireOptions{
+		PoolSelector:        "pool.name",
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "prod",
 		SelectedLocation:    "eastus2",
@@ -891,14 +738,13 @@ func TestAcquireRunWeightedSelectsRegionAndFallsBackAcrossSubscriptions(t *testi
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-b")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-shard0-slot
         subscriptions: {e2e: dev-sub-a}
-        region_mode: weighted
         regions: [westus3, centralus, canadacentral]
         resource_type: aro-hcp-dev-shard0-slot
         slot_count: 1
@@ -910,7 +756,6 @@ environments:
             resource_group_count: 2
       - name: aro-hcp-dev-shard1-slot
         subscriptions: {e2e: dev-sub-b}
-        region_mode: weighted
         regions: [westus3, centralus, canadacentral]
         resource_type: aro-hcp-dev-shard1-slot
         slot_count: 1
@@ -936,7 +781,7 @@ environments:
 	err := acquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"eastus2"},
+		PoolSelector:        "pool.name",
 		LocationWeights:     "westus3=1,centralus=1,canadacentral=1",
 		BuildID:             "0",
 		SharedDir:           sharedDir,
@@ -983,31 +828,31 @@ func TestAcquireRunStopsOnHardFailure(t *testing.T) {
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-b")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
       - name: aro-hcp-dev-centralus-b-slot
         subscriptions: {e2e: dev-sub-b}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-b-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 2
 `)
@@ -1026,7 +871,7 @@ environments:
 	err := acquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           sharedDir,
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -1050,31 +895,31 @@ func TestAcquireRunRetriesAfterFullUnavailablePassAcrossPools(t *testing.T) {
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-b")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
       - name: aro-hcp-dev-centralus-b-slot
         subscriptions: {e2e: dev-sub-b}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-b-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 2
 `)
@@ -1091,7 +936,7 @@ environments:
 	completed := completeAcquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           t.TempDir(),
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -1101,7 +946,15 @@ environments:
 	})
 	clock := newFakeClock(time.Unix(0, 0))
 	completed.Now = clock.Now
-	completed.Sleep = clock.Sleep
+	completed.Sleep = func(ctx context.Context, duration time.Duration) error {
+		// A retry must consume the original plan, not a mutable distribution
+		// diagnostic or the pool's current automatic placement.
+		completed.RegionSelection.RuntimeRegion = "eastus2"
+		for i := range completed.CandidatePools {
+			completed.CandidatePools[i].Regions = []string{"eastus2"}
+		}
+		return clock.Sleep(ctx, duration)
+	}
 
 	if err := completed.Run(context.Background()); err != nil {
 		t.Fatalf("expected acquire run to succeed after a retry pass: %v", err)
@@ -1117,37 +970,44 @@ environments:
 	if got, want := clock.slept, []time.Duration{1 * time.Minute}; !equalDurations(got, want) {
 		t.Fatalf("unexpected sleep durations: got %v want %v", got, want)
 	}
+	state, err := slots.LoadAcquiredSlotState(completed.SharedDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.RuntimeRegion != "centralus" {
+		t.Fatalf("retry changed hard placement: %q", state.RuntimeRegion)
+	}
 }
 
 func TestAcquireRunRotatesCandidatePoolStartingPoint(t *testing.T) {
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-a")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
       - name: aro-hcp-dev-centralus-b-slot
         subscriptions: {e2e: dev-sub-b}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-b-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-b
             resource_group_count: 2
 `)
@@ -1165,7 +1025,7 @@ environments:
 	completed := completeAcquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           t.TempDir(),
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -1198,20 +1058,20 @@ func TestAcquireRunRetriesAfterFullUnavailablePassAfterRetryableServerFailure(t 
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-a")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
 `)
@@ -1227,7 +1087,7 @@ environments:
 	completed := completeAcquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           t.TempDir(),
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -1257,20 +1117,20 @@ func TestAcquireRunStopsAfterMaxWaitForLease(t *testing.T) {
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-a")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
 `)
@@ -1283,7 +1143,7 @@ environments:
 	completed := completeAcquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           t.TempDir(),
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -1319,20 +1179,20 @@ func TestAcquireRunInfiniteWaitRespectsContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-a")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
 `)
@@ -1347,7 +1207,7 @@ environments:
 	completed := completeAcquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           t.TempDir(),
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -1381,20 +1241,20 @@ func TestAcquireRunReleasesLeaseOnSubscriptionResolutionFailure(t *testing.T) {
 	// used by the pool. This makes VerifyCustomerSubscriptionName fail
 	// after the lease proxy has already granted a lease.
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "some-other-subscription")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
 `)
@@ -1410,7 +1270,7 @@ environments:
 	err := acquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           sharedDir,
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -1442,20 +1302,20 @@ func TestAcquireRunRollsBackWhenEnvFileWriteFailsAfterStateWrite(t *testing.T) {
 	t.Parallel()
 
 	clusterProfileDir := writeAcquireTestClusterProfiles(t, "dev-sub-a")
-	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 2
+	catalogPath := writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-centralus-a-slot
         subscriptions: {e2e: dev-sub-a}
-        region: centralus
-        region_mode: fixed
+        regions: [centralus]
         resource_type: aro-hcp-dev-centralus-a-slot
         slot_count: 1
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: centralus
             resource_group_prefix: aro-hcp-msi-container-dev-a
             resource_group_count: 2
 `)
@@ -1475,7 +1335,7 @@ environments:
 	options := completeAcquireForTest(t, &RawAcquireOptions{
 		ClusterProfileDir:   clusterProfileDir,
 		DeployEnv:           "ci01",
-		AllowedLocations:    []string{"centralus"},
+		PlacementRegion:     "centralus",
 		SharedDir:           sharedDir,
 		CatalogPath:         catalogPath,
 		LeaseProxyServerURL: server.URL,
@@ -1522,39 +1382,38 @@ environments:
 	}
 }
 
-func writeAcquireTestCatalog(t *testing.T, regionMode slots.RegionMode, region string) string {
+func writeAcquireTestCatalog(t *testing.T, region string) string {
 	t.Helper()
 
-	return writeAcquireTestCatalogFromYAML(t, fmt.Sprintf(`version: 2
+	return writeAcquireTestCatalogFromYAML(t, fmt.Sprintf(`version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-shard0-slot
         subscriptions: {e2e: "ARO HCP E2E Hosted Clusters (EA Subscription)"}
-        region: %s
-        region_mode: %s
+        regions: [%s]
         resource_type: aro-hcp-dev-shard0-slot
         slot_count: 2
         slot_assets:
           e2e_identities:
             allocation: dedicated
+            provisioning_region: %s
             resource_group_prefix: aro-hcp-msi-container-dev
             resource_group_count: 2
-`, region, regionMode))
+`, region, region))
 }
 
 func writeWeightedAcquireTestCatalog(t *testing.T) string {
 	t.Helper()
 
-	return writeAcquireTestCatalogFromYAML(t, `version: 2
+	return writeAcquireTestCatalogFromYAML(t, `version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
       - name: aro-hcp-dev-shard0-slot
         subscriptions: {e2e: dev-sub}
-        region_mode: weighted
         regions: [westus3, centralus, canadacentral]
         resource_type: aro-hcp-dev-shard0-slot
         slot_count: 2
@@ -1650,7 +1509,11 @@ func completeAcquireOptions(raw *RawAcquireOptions) (*AcquireOptions, error) {
 	if err != nil {
 		return nil, err
 	}
-	return validated.Complete(context.Background())
+	catalog, err := slots.LoadCatalog(raw.CatalogPath)
+	if err != nil {
+		return nil, err
+	}
+	return validated.completeCatalog(catalog)
 }
 
 func equalLocationWeights(left, right []locationWeight) bool {
@@ -1812,4 +1675,22 @@ func acquireForTest(t *testing.T, raw *RawAcquireOptions) error {
 		return err
 	}
 	return options.Run(context.Background())
+}
+
+// Synthetic lifecycle inventories deliberately do not claim membership in the
+// migration policy table. Public Complete coverage is tested separately.
+func acquireSyntheticCatalog(ctx context.Context, raw *RawAcquireOptions) error {
+	validated, err := raw.Validate()
+	if err != nil {
+		return err
+	}
+	catalog, err := slots.LoadCatalog(raw.CatalogPath)
+	if err != nil {
+		return err
+	}
+	completed, err := validated.completeCatalog(catalog)
+	if err != nil {
+		return err
+	}
+	return completed.Run(ctx)
 }

@@ -28,27 +28,25 @@ func TestSelectedRuntimeRegionDeterminesVMFamilyPolicy(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name         string
-		mode         slots.RegionMode
 		regionConfig string
 		override     string
 		buildID      string
 		wantRegion   string
 		wantWorker   string
 	}{
-		{"runtime override", slots.RegionModeRuntimeSelected, "region: westus3", "centralus", "", "centralus", "standardDASv5Family"},
-		{"runtime override case insensitive", slots.RegionModeRuntimeSelected, "region: westus3", "CentralUS", "", "CentralUS", "standardDASv5Family"},
-		{"weighted central", slots.RegionModeWeighted, "regions: [westus3, centralus, canadacentral]", "", "1", "centralus", "standardDASv5Family"},
-		{"weighted default policy", slots.RegionModeWeighted, "regions: [westus3, centralus, canadacentral]", "", "0", "canadacentral", "standardDSv5Family"},
+		{"runtime override", "placement: {default_region: westus3, allow_undeclared: true}", "centralus", "", "centralus", "standardDASv5Family"},
+		{"runtime override case insensitive", "placement: {default_region: westus3, allow_undeclared: true}", "CentralUS", "", "CentralUS", "standardDASv5Family"},
+		{"weighted central", "regions: [westus3, centralus, canadacentral]", "", "1", "centralus", "standardDASv5Family"},
+		{"weighted default policy", "regions: [westus3, centralus, canadacentral]", "", "0", "canadacentral", "standardDSv5Family"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			catalog, err := slots.LoadCatalog(writeAcquireTestCatalogFromYAML(t, fmt.Sprintf(`version: 2
+			catalog, err := slots.LoadCatalog(writeAcquireTestCatalogFromYAML(t, fmt.Sprintf(`version: 3
 environments:
   dev:
     deployment_environment: {name: ci01}
     pools:
     - name: shard0
       subscriptions: {e2e: dev-e2e}
-      region_mode: %s
       %s
       slot_count: 1
       slot_assets:
@@ -63,16 +61,16 @@ environments:
         regions:
           centralus:
             worker_families: [standardDASv5Family]
-`, tc.mode, tc.regionConfig)))
+`, tc.regionConfig)))
 			if err != nil {
 				t.Fatal(err)
 			}
-			selection, err := resolveRegionSelection(catalog, "dev", tc.mode, tc.override, "westus3=1,centralus=1,canadacentral=1", tc.buildID)
+			plan, err := planAcquisition(catalog, "dev", acquireRequest{placement: tc.override}, nil, "westus3=1,centralus=1,canadacentral=1", tc.buildID)
 			if err != nil {
 				t.Fatal(err)
 			}
 			pool := catalog.Environments["dev"].Pools[0]
-			opts := &AcquireOptions{completedAcquireOptions: &completedAcquireOptions{RegionSelection: selection}}
+			opts := &AcquireOptions{completedAcquireOptions: &completedAcquireOptions{PlacementPlan: plan}}
 			slot := slots.ExpandSlotsForPool("dev", pool)[0]
 			slot.Subscriptions.E2E.ID = "e2e-id"
 			state := &slots.AcquiredSlotState{

@@ -45,7 +45,6 @@ func applyPools(ctx context.Context, credential azcore.TokenCredential, pools []
 			"environment", pool.Environment,
 			"subscriptionName", pool.SubscriptionName,
 			"subscriptionID", pool.SubscriptionID,
-			"defaultRegion", pool.Region,
 			"provisioningRegion", pool.ProvisioningRegion,
 			"slotCount", len(pool.Slots),
 		)

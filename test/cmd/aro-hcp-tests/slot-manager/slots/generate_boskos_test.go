@@ -27,7 +27,7 @@ func TestRewriteGenerateBoskosAndValidateBoskosConfig(t *testing.T) {
 	t.Parallel()
 
 	catalog := &Catalog{
-		Version: 2,
+		Version: 3,
 		Environments: map[string]Environment{
 			"dev": {
 				DeploymentEnvironment: DeploymentEnvironment{Name: "ci01"},
@@ -35,10 +35,10 @@ func TestRewriteGenerateBoskosAndValidateBoskosConfig(t *testing.T) {
 					{
 						Name:          "dev",
 						Subscriptions: PoolSubscriptions{E2E: "dev"},
-						Region:        "westus3",
+						Regions:       []string{"westus3"},
 						ResourceType:  "aro-hcp-dev-westus3-slot",
 						SlotCount:     1,
-						SlotAssets:    SlotAssets{E2EIdentities: &E2EIdentitiesAsset{Allocation: AllocationDedicated, ResourceGroupPrefix: "aro-hcp-msi-container-dev", ResourceGroupCount: 20}},
+						SlotAssets:    SlotAssets{E2EIdentities: &E2EIdentitiesAsset{Allocation: AllocationDedicated, ProvisioningRegion: "westus3", ResourceGroupPrefix: "aro-hcp-msi-container-dev", ResourceGroupCount: 20}},
 					},
 				},
 			},
@@ -48,10 +48,10 @@ func TestRewriteGenerateBoskosAndValidateBoskosConfig(t *testing.T) {
 					{
 						Name:          "int",
 						Subscriptions: PoolSubscriptions{E2E: "int"},
-						Region:        "uksouth",
+						Regions:       []string{"uksouth"},
 						ResourceType:  "aro-hcp-int-uksouth-slot",
 						SlotCount:     1,
-						SlotAssets:    SlotAssets{E2EIdentities: &E2EIdentitiesAsset{Allocation: AllocationDedicated, ResourceGroupPrefix: "aro-hcp-msi-container-int", ResourceGroupCount: 20}},
+						SlotAssets:    SlotAssets{E2EIdentities: &E2EIdentitiesAsset{Allocation: AllocationDedicated, ProvisioningRegion: "uksouth", ResourceGroupPrefix: "aro-hcp-msi-container-int", ResourceGroupCount: 20}},
 					},
 				},
 			},
@@ -61,10 +61,10 @@ func TestRewriteGenerateBoskosAndValidateBoskosConfig(t *testing.T) {
 					{
 						Name:          "prod",
 						Subscriptions: PoolSubscriptions{E2E: "prod"},
-						Region:        "uksouth",
+						Regions:       []string{"uksouth"},
 						ResourceType:  "aro-hcp-prod-uksouth-slot",
 						SlotCount:     2,
-						SlotAssets:    SlotAssets{E2EIdentities: &E2EIdentitiesAsset{Allocation: AllocationDedicated, ResourceGroupPrefix: "aro-hcp-msi-container-prod", ResourceGroupCount: 15}},
+						SlotAssets:    SlotAssets{E2EIdentities: &E2EIdentitiesAsset{Allocation: AllocationDedicated, ProvisioningRegion: "uksouth", ResourceGroupPrefix: "aro-hcp-msi-container-prod", ResourceGroupCount: 15}},
 					},
 				},
 			},

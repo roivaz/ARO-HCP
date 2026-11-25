@@ -30,6 +30,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -59,6 +60,10 @@ func DefaultAcquireOptions() *RawAcquireOptions {
 		AllowedSubscriptions:   allowedSubscriptions,
 		AllowedLocations:       allowedLocations,
 		SelectedLocation:       selectedLocation,
+		PoolSelector:           effectiveAcquireEnv("POOL_SELECTOR", "MULTISTAGE_PARAM_OVERRIDE_POOL_SELECTOR"),
+		PlacementRegion:        effectiveAcquireEnv("PLACEMENT_REGION", "MULTISTAGE_PARAM_OVERRIDE_PLACEMENT_REGION"),
+		newPlacementEnv:        effectiveAcquireEnv("PLACEMENT_REGION", "MULTISTAGE_PARAM_OVERRIDE_PLACEMENT_REGION") != "",
+		legacySelectorEnv:      strings.TrimSpace(os.Getenv("ALLOWED_SUBSCRIPTIONS")) != "" || strings.TrimSpace(os.Getenv("MULTISTAGE_PARAM_OVERRIDE_ALLOWED_SUBSCRIPTIONS")) != "",
 		LocationWeights:        strings.TrimSpace(os.Getenv("LOCATION_WEIGHTS")),
 		BuildID:                strings.TrimSpace(os.Getenv("BUILD_ID")),
 		SharedDir:              strings.TrimSpace(os.Getenv("SHARED_DIR")),
@@ -99,13 +104,10 @@ func defaultSetupAzureGlobalLogger(path string) (io.Closer, error) {
 }
 
 func defaultAcquireSelectors() ([]string, []string, string) {
-	allowedSubscriptions := splitSelectorValues(os.Getenv("ALLOWED_SUBSCRIPTIONS"))
+	allowedSubscriptions := splitSelectorValues(effectiveAcquireEnv("ALLOWED_SUBSCRIPTIONS", "MULTISTAGE_PARAM_OVERRIDE_ALLOWED_SUBSCRIPTIONS"))
 	selectedLocation := strings.TrimSpace(os.Getenv("MULTISTAGE_PARAM_OVERRIDE_LOCATION"))
-	if selectedLocation != "" {
-		return allowedSubscriptions, nil, selectedLocation
-	}
-
-	return allowedSubscriptions, splitSelectorValues(os.Getenv("ALLOWED_LOCATIONS")), ""
+	// A nonempty location allowlist is retired and rejected by decodeAcquireRequest even when an override is set.
+	return allowedSubscriptions, splitSelectorValues(os.Getenv("ALLOWED_LOCATIONS")), selectedLocation
 }
 
 func splitSelectorValues(raw string) []string {
@@ -135,12 +137,15 @@ func normalizeValues(parts []string) []string {
 }
 
 func BindAcquireOptions(opts *RawAcquireOptions, cmd *cobra.Command) error {
+	opts.flags = cmd.Flags()
+	cmd.Flags().StringVar(&opts.PoolSelector, "pool-selector", opts.PoolSelector, "Kubernetes label selector for pools in the resolved environment.")
+	cmd.Flags().StringVar(&opts.PlacementRegion, "placement-region", opts.PlacementRegion, "Hard runtime placement region.")
 	cmd.Flags().StringVar(&opts.ClusterProfileDir, "cluster-profile-dir", opts.ClusterProfileDir, "Path to CLUSTER_PROFILE_DIR")
 	cmd.Flags().StringSliceVar(&opts.ClusterProfileDirs, "cluster-profile-dirs", opts.ClusterProfileDirs, "Optional list of cluster profile dirs to resolve the leased subscription's owning tenant/credentials across. Falls back to --cluster-profile-dir when unset.")
 	cmd.Flags().StringVar(&opts.Environment, "environment", opts.Environment, "Logical slot environment (dev, dev-xs, int, stg, prod).")
 	cmd.Flags().StringVar(&opts.DeployEnv, "deploy-env", opts.DeployEnv, "Optional deploy environment compatibility selector/assertion (ci00, ci01, ci02, int, stg, prod).")
 	cmd.Flags().StringSliceVar(&opts.AllowedSubscriptions, "allowed-subscriptions", opts.AllowedSubscriptions, "Optional catalog subscriptions.e2e values allowed for candidate pool selection.")
-	cmd.Flags().StringSliceVar(&opts.AllowedLocations, "allowed-locations", opts.AllowedLocations, "Optional Azure regions allowed for fixed-mode candidate pool selection.")
+	cmd.Flags().StringSliceVar(&opts.AllowedLocations, "allowed-locations", opts.AllowedLocations, "Retired. A nonempty value is an error; use --placement-region (or MULTISTAGE_PARAM_OVERRIDE_LOCATION) for a hard location.")
 	cmd.Flags().StringVar(&opts.LocationWeights, "location-weights", opts.LocationWeights, "Weighted-mode location weights as comma-separated location=weight entries.")
 	cmd.Flags().StringVar(&opts.BuildID, "build-id", opts.BuildID, "Stable per-run key used for deterministic weighted location selection.")
 	cmd.Flags().StringVar(&opts.SharedDir, "shared-dir", opts.SharedDir, "Path to SHARED_DIR")
@@ -163,6 +168,11 @@ func BindAcquireOptions(opts *RawAcquireOptions, cmd *cobra.Command) error {
 }
 
 type RawAcquireOptions struct {
+	PoolSelector           string
+	PlacementRegion        string
+	flags                  *pflag.FlagSet
+	legacySelectorEnv      bool
+	newPlacementEnv        bool
 	WriteState             func(string, *slots.AcquiredSlotState) error
 	ClusterProfileDir      string
 	ClusterProfileDirs     []string
@@ -215,6 +225,7 @@ type completedAcquireOptions struct {
 	LeaseWaitInterval      time.Duration
 	RegionSelection        RegionSelection
 	CandidatePools         []slots.Pool
+	PlacementPlan          acquisitionPlan
 	PoolEnvironment        string
 	AssetRegistry          *assets.Registry
 	DisabledAssetAdmission []assets.Kind
@@ -263,6 +274,9 @@ func Acquire(ctx context.Context, opts *RawAcquireOptions) error {
 }
 
 func (o *RawAcquireOptions) Validate() (*ValidatedAcquireOptions, error) {
+	if _, err := o.decodeAcquireRequest(); err != nil {
+		return nil, err
+	}
 	switch {
 	case len(o.effectiveClusterProfileDirs()) == 0:
 		return nil, fmt.Errorf("--cluster-profile-dir or --cluster-profile-dirs must not be empty")
@@ -320,8 +334,15 @@ func (o *ValidatedAcquireOptions) Complete(_ context.Context) (*AcquireOptions, 
 	if err != nil {
 		return nil, err
 	}
+	return o.completeCatalog(catalog)
+}
 
-	selectedLocation := strings.TrimSpace(o.SelectedLocation)
+// completeCatalog consumes a loaded catalog so placement planning is testable without file IO.
+func (o *ValidatedAcquireOptions) completeCatalog(catalog *slots.Catalog) (*AcquireOptions, error) {
+	request, err := o.decodeAcquireRequest()
+	if err != nil {
+		return nil, err
+	}
 	environment := strings.TrimSpace(o.Environment)
 	if environment == "" {
 		environment, err = catalog.ResolveEnvironmentForDeployEnv(o.DeployEnv)
@@ -332,18 +353,15 @@ func (o *ValidatedAcquireOptions) Complete(_ context.Context) (*AcquireOptions, 
 		return nil, fmt.Errorf("unknown environment %q", environment)
 	}
 
-	candidatePools, err := catalog.CandidatePools(environment, sets.New(o.AllowedSubscriptions...), sets.New(o.AllowedLocations...), selectedLocation)
+	plan, err := planAcquisition(catalog, environment, request, o.AllowedSubscriptions, o.LocationWeights, o.BuildID)
 	if err != nil {
 		return nil, err
 	}
+	candidatePools := plan.pools
 	if o.DeployEnv != "" && o.DeployEnv != catalog.Environments[environment].DeploymentEnvironment.Name {
 		return nil, fmt.Errorf("environment %q has no candidate pool with deploy_env %q", environment, o.DeployEnv)
 	}
 
-	regionMode, err := catalog.RegionModeForEnvironment(environment)
-	if err != nil {
-		return nil, err
-	}
 	registry := o.AssetRegistry
 	if registry == nil {
 		registry, err = newAssetRegistry()
@@ -364,10 +382,6 @@ func (o *ValidatedAcquireOptions) Complete(_ context.Context) (*AcquireOptions, 
 	resolveSubscriptions := o.ResolveSubscriptions
 	if resolveSubscriptions == nil {
 		resolveSubscriptions = slots.ResolvePoolSubscriptions
-	}
-	regionSelection, err := resolveRegionSelection(catalog, environment, regionMode, selectedLocation, o.LocationWeights, o.BuildID)
-	if err != nil {
-		return nil, err
 	}
 	disabledAssetAdmission := make([]assets.Kind, 0, len(o.DisabledAssetAdmission))
 	for _, kind := range o.DisabledAssetAdmission {
@@ -394,7 +408,8 @@ func (o *ValidatedAcquireOptions) Complete(_ context.Context) (*AcquireOptions, 
 			LeaseProxyTimeout:       o.LeaseProxyTimeout,
 			MaxWaitForLease:         o.MaxWaitForLease,
 			LeaseWaitInterval:       o.LeaseWaitInterval,
-			RegionSelection:         regionSelection,
+			RegionSelection:         plan.selection,
+			PlacementPlan:           plan,
 			CandidatePools:          candidatePools,
 			PoolEnvironment:         environment,
 			AssetRegistry:           registry,
@@ -409,7 +424,6 @@ func (o *ValidatedAcquireOptions) Complete(_ context.Context) (*AcquireOptions, 
 }
 
 type RegionSelection struct {
-	Mode                 slots.RegionMode
 	RuntimeRegion        string
 	CatalogRegions       []string
 	NormalizedWeights    []string
@@ -422,27 +436,8 @@ type locationWeight struct {
 	Weight   uint64
 }
 
-func resolveRegionSelection(catalog *slots.Catalog, environment string, regionMode slots.RegionMode, override, rawWeights, buildID string) (RegionSelection, error) {
-	selection := RegionSelection{
-		Mode:                 regionMode,
-		RuntimeRegion:        override,
-		LocationOverrideUsed: override != "",
-	}
-	if regionMode != slots.RegionModeWeighted {
-		return selection, nil
-	}
-
-	regions, err := catalog.RegionsForEnvironment(environment)
-	if err != nil {
-		return RegionSelection{}, err
-	}
-	selection.CatalogRegions = regions
-	if override != "" {
-		if !sets.New(regions...).Has(override) {
-			return RegionSelection{}, fmt.Errorf("location override %q is not allowed for weighted environment %q; allowed locations: %s", override, environment, strings.Join(regions, ","))
-		}
-		return selection, nil
-	}
+func resolveRegionSelection(regions []string, environment, rawWeights, buildID string) (RegionSelection, error) {
+	selection := RegionSelection{CatalogRegions: regions}
 
 	weights, totalWeight, err := parseLocationWeights(rawWeights, regions)
 	if err != nil {
@@ -576,6 +571,10 @@ func (o *AcquireOptions) Run(ctx context.Context) error {
 		return err
 	}
 	logger := logr.FromContextOrDiscard(ctx)
+	logger.Info("Planned slot acquisition", "apiRoute", o.PlacementPlan.route, "environment", o.PoolEnvironment, "candidates", o.PlacementPlan.regions, "exclusions", o.PlacementPlan.exclusions)
+	if o.PlacementPlan.route == "legacy" {
+		logger.Info("Deprecated legacy slot selection; migrate allowed-subscriptions to pool-selector and placement-region", "legacyControls", o.PlacementPlan.legacyControls)
+	}
 	now := o.Now
 	if now == nil {
 		now = time.Now
@@ -691,10 +690,7 @@ func rotatedCandidatePools(pools []slots.Pool, now time.Time) []slots.Pool {
 }
 
 func (o *AcquireOptions) runtimeRegionForPool(pool slots.Pool) string {
-	if o.RegionSelection.RuntimeRegion != "" {
-		return o.RegionSelection.RuntimeRegion
-	}
-	return pool.Region
+	return o.PlacementPlan.regions[pool.Name]
 }
 
 func (o *AcquireOptions) finalizeAcquiredLease(ctx context.Context, pool slots.Pool, leasedName string) (result error) {
@@ -795,7 +791,7 @@ func (o *AcquireOptions) finalizeAcquiredLease(ctx context.Context, pool slots.P
 	}
 	logger.Info("Acquired slot and wrote shared artifacts",
 		"disabledAssetAdmission", o.DisabledAssetAdmission,
-		"regionMode", o.RegionSelection.Mode,
+		"apiRoute", o.PlacementPlan.route,
 		"catalogRegions", strings.Join(o.RegionSelection.CatalogRegions, ","),
 		"locationWeights", strings.Join(o.RegionSelection.NormalizedWeights, ","),
 		"locationOverrideUsed", o.RegionSelection.LocationOverrideUsed,
@@ -807,14 +803,10 @@ func (o *AcquireOptions) finalizeAcquiredLease(ctx context.Context, pool slots.P
 }
 
 func describePool(pool slots.Pool) string {
-	switch pool.EffectiveRegionMode() {
-	case slots.RegionModeRuntimeSelected:
-		return fmt.Sprintf("subscription_name=%q, region_mode=%q, default_region=%q", pool.Subscriptions.E2E, pool.EffectiveRegionMode(), pool.Region)
-	case slots.RegionModeWeighted:
-		return fmt.Sprintf("subscription_name=%q, region_mode=%q, regions=%q", pool.Subscriptions.E2E, pool.EffectiveRegionMode(), strings.Join(pool.Regions, ","))
-	default:
-		return fmt.Sprintf("subscription_name=%q, region=%q", pool.Subscriptions.E2E, pool.Region)
+	if pool.Placement != nil {
+		return fmt.Sprintf("pool=%q, resource_type=%q, subscription_name=%q, default_region=%q", pool.Name, pool.ResourceType, pool.Subscriptions.E2E, pool.Placement.DefaultRegion)
 	}
+	return fmt.Sprintf("pool=%q, resource_type=%q, subscription_name=%q, regions=%q", pool.Name, pool.ResourceType, pool.Subscriptions.E2E, strings.Join(pool.Regions, ","))
 }
 
 func sleepContext(ctx context.Context, duration time.Duration) error {
