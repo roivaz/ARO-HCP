@@ -4,7 +4,7 @@ This is the procedure for draining, rebalancing, or restoring new DEV CI runs wh
 
 ## How DEV Jobs Pick A Region
 
-Most DEV jobs get their region from slot-manager. The pools in [`e2e-slots.yaml`](../../test/e2e-config/e2e-slots.yaml) use weighted region selection, where the job supplies relative weights in `LOCATION_WEIGHTS` and slot-manager derives the region deterministically from the run's `BUILD_ID`; the mechanism is described under [Catalog](../../test/cmd/aro-hcp-tests/slot-manager/DESIGN.md#catalog). A few consequences matter for operators:
+Most DEV jobs get their region from slot-manager. The pools in [`e2e-slots.yaml`](../../test/e2e-config/e2e-slots.yaml) are closed multi-region pools (an ordered `regions` list), so a job without a concrete location supplies relative weights in `LOCATION_WEIGHTS` and slot-manager derives the region deterministically from the run's `BUILD_ID`; the mechanism is described under [Catalog](../../test/cmd/aro-hcp-tests/slot-manager/DESIGN.md#catalog). A few consequences matter for operators:
 
 - The weights give an approximate distribution over many runs, not a hard per-region concurrency limit.
 - Nothing evaluates regional health or changes weights automatically. Changing them is a manual configuration change.

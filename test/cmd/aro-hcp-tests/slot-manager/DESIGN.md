@@ -57,16 +57,17 @@ values downstream job steps consume.
 The catalog describes intent; acquired state records the exact allocation; the
 runtime contract publishes that resolved allocation. A **dedicated** asset is
 assigned deterministically to one primary slot and needs no separate lease. A
-**leased** asset is independently acquired from an asset pool. Every catalog and
-state document requires `version: 2`. The acquire and release steps use the same
-runner image; completed job artifacts are read-only, and cross-version recovery
-is unsupported.
+**leased** asset is independently acquired from an asset pool. Catalogs require
+`version: 3`; acquired state remains `version: 2`. The binary and catalog ship
+together in the test image. The v3 reader does not read v2 catalogs. Existing
+v2 journals retain their names, raw slot regions and export interpretation;
+release uses recorded leases without reading a catalog.
 
 ## A job's path
 
 ```text
-catalog → select environment and pool → lease primary slot
-  → resolve subscriptions and runtime region
+catalog → select environment, pools and immutable regional placements
+  → lease primary slot → resolve subscriptions
   → acquire or resolve declared assets
   → admit assets (fail closed unless explicitly opted out)
   → publish runtime contract
@@ -89,7 +90,7 @@ is required only when a pool in that environment declares an infrastructure
 asset.
 
 ```yaml
-version: 2
+version: 3
 asset_pools:
 - name: dev-infrastructure-identities
   kind: infrastructure_identities
@@ -105,7 +106,6 @@ environments:
       infrastructure_subscription: "ARO HCP E2E Infrastructure (EA Subscription)"
     pools:
     - name: shard0
-      region_mode: weighted
       regions: [westus3, centralus, canadacentral]
       slot_count: 5
       subscriptions:
@@ -138,16 +138,25 @@ or mismatched required bindings fail acquisition. Without infrastructure
 demand, no infrastructure profile file is read and no infrastructure
 subscription is needed in state or exports.
 
-Region selection is pool behavior:
+Placement is explicit catalog data, not a selectable scalar label:
 
-- `fixed`: one authoritative region;
-- `runtime-selected`: caller supplies a permitted region, with the pool region
-  as fallback;
-- `weighted`: an ordered allowlist and caller-supplied weights select a region
-  deterministically from `BUILD_ID` and the weights.
+- Closed pools declare nonempty, ordered `regions`. A singleton resolves
+  directly without weights or `BUILD_ID`. Multiple regions require complete,
+  nonnegative `LOCATION_WEIGHTS`, positive total weight and `BUILD_ID`.
+  Selection preserves catalog order and the FNV-1a hash.
+- Open pools omit `regions` and declare
+  `placement: {default_region: uksouth, allow_undeclared: true}`. Automatic
+  placement uses the default; hard placement may use another region. This
+  preserves the PROD policy (STG is a closed westus3 singleton), not a claim of universal capacity or onboarding.
+- An environment may contain different singleton pools, identical ordered
+  multi-region lists, or open pools; heterogeneous multi-region scheduling is
+  unsupported.
 
-An explicit permitted location override takes precedence. Downstream steps use
-the acquired region; they must not select it again.
+Hard placement filters candidates before leasing and bypasses weights. Under
+the new API, nonempty weights without hard placement are invalid for singleton
+or open-default pools. Downstream steps use `SELECTED_LOCATION`; they never
+redraw placement. Identity `provisioning_region` is always explicit and does
+not follow the selected run location.
 
 Every pool requires `slot_assets.e2e_identities`; missing or null is invalid.
 `slot_assets` entries for other kinds are opt-in, and their presence makes them
@@ -169,6 +178,97 @@ required capacity = sum(consumer pool slot_count * units_per_slot)
 compatible subscriptions and asset configuration. Unknown, unused,
 under-capacity, multiply defined, or incompatible pools are invalid. Derived
 capacity drives Boskos inventory and backing-resource management.
+
+## Acquisition selectors and compatibility
+
+`--pool-selector` is one Kubernetes-style scalar selector string scoped to the
+resolved `--environment` or `--deploy-env`. `pool.name` is always projected from
+the stable pool name. Optional catalog `labels` must use string keys and values
+with the key prefix `slots.aro-hcp.azure.com/`; they cannot override `pool.name`.
+Labels do not confer credentials, admission, regional capacity or authorization.
+
+Supported predicates are `=`, `==`, `!=`, `in`, `notin`, existence and
+nonexistence. Commas are AND, including outside `in (...)`; there is no
+expression-level OR. Numeric comparisons and keys unknown in the resolved
+environment fail. Negative predicates retain Kubernetes absent-key semantics:
+use `slots.aro-hcp.azure.com/team,slots.aro-hcp.azure.com/team!=example`
+when presence is required. An authored empty string is distinct from absence.
+
+Examples below omit the normal profile, output and lease-proxy options:
+
+```sh
+aro-hcp-tests slot-manager acquire --environment int --pool-selector 'pool.name=shard0'
+aro-hcp-tests slot-manager acquire --environment dev --pool-selector 'pool.name in (shard0,shard1)' --placement-region westus3
+aro-hcp-tests slot-manager acquire --environment prod --pool-selector 'pool.name=testtenant' --placement-region eastus2euap
+```
+
+New control precedence, within each family:
+
+| Flag | Baseline environment | Nonempty invocation replacement |
+| --- | --- | --- |
+| `--pool-selector` | `POOL_SELECTOR` | `MULTISTAGE_PARAM_OVERRIDE_POOL_SELECTOR` |
+| `--placement-region` | `PLACEMENT_REGION` | `MULTISTAGE_PARAM_OVERRIDE_PLACEMENT_REGION` |
+
+Explicit flags win over invocation replacements, which win over baselines.
+An explicitly empty selector selects all pools **in the resolved environment**
+and opts into the new API. An explicitly empty placement flag fails. Empty new
+environment values are absent; to request unrestricted new selection in CI,
+use `POOL_SELECTOR=pool.name`.
+
+During Phase A/B, requests without new controls use the whole-request legacy
+adapter. `--allowed-subscriptions` / `ALLOWED_SUBSCRIPTIONS` is deprecated but
+functional. Nonempty `MULTISTAGE_PARAM_OVERRIDE_ALLOWED_SUBSCRIPTIONS` replaces
+the baseline subscription list; a direct flag still wins.
+
+`--allowed-locations` / `ALLOWED_LOCATIONS` is retired: its meaning depended on
+the old fixed/weighted/runtime-selected class, and ignoring it would broaden pool
+selection, so a nonempty value is an error on every route, even when
+`MULTISTAGE_PARAM_OVERRIDE_LOCATION` is also set. Use that variable (or
+`--placement-region`) for a hard location. The legacy route has no pool
+classification table: the v3 shape alone determines placement, and both routes
+share one planner (closed singleton resolves directly, closed multi-region is
+weighted, open pools use their default). Weights without hard placement are
+therefore also rejected for singleton and open pools on the legacy route.
+
+New controls cannot mix with any explicitly supplied legacy selector flag
+(even empty), or with nonempty legacy selector environment values. Inherited
+old filters cannot be hidden by new flags. `MULTISTAGE_PARAM_OVERRIDE_LOCATION`
+is a common concrete-location alias, not a location allowlist: by itself it
+keeps legacy dispatch; with a new selector it supplies hard placement. Combining
+it with a new placement source fails, even if their values agree. `LOCATION`
+is downstream configuration, never an acquisition selector. Weights,
+`BUILD_ID`, and environment/deploy-environment controls do not opt into new mode.
+
+Planning performs no Azure/Boskos operations or output writes. Zero compatible
+candidates is a configuration error; compatible but busy pools retain the same
+plan while waiting/retrying. Candidate rotation occurs once. Route, planned
+locations and exclusions are diagnostic data, not availability guarantees.
+
+### Delivery and rollback
+
+Phase A ships the v3 binary/catalog pair with old callers unchanged. The image
+still bundles both via `test/Containerfile.e2e`; never deploy the schema alone.
+`slots/testdata/legacy-provenance.json` records the frozen oracle (the v2 catalog
+and pre-migration source on `main`), the 56 canonical caller fixtures (31 image
+building, 25 image importing, taken after the INT `ALLOWED_LOCATIONS` removal
+that must merge before this change) and how to regenerate them. Frozen fixtures
+cover raw expansion, Boskos, physical identities, provisioning, mock identities,
+state and exports. Regenerate them from the new `main` and the then-current
+release configuration whenever the inventory or caller set changes on purpose.
+
+Phase B changes release refs/wrappers, baselines, generated jobs and pipeline
+producers together, only after the Phase-A-capable image is available to built
+and imported consumers. `future-acquire-wrapper.sh` in testdata is a tested
+**future wrapper contract**, not validation or migration of the deployed release
+wrapper. Remove inherited legacy filters rather than masking them; translate
+the old location alias only if it is then unset.
+
+Phase C removes deprecated request decoding, the legacy subscription filter and deprecation
+diagnostics after owner-confirmed caller discovery and observed migration.
+Keep open placement and independently required journal compatibility. A local
+build or source commit does not prove image publication/adoption. Roll Phase A
+back as an image/code/catalog pair; after B, restore old callers before reverting
+to a pre-A image.
 
 ## Asset lifecycle
 
@@ -196,9 +296,10 @@ ready for reuse.
 
 ## Acquire, persist, fail, release
 
-Acquisition validates the catalog, selects an environment and candidate pool,
-leases the primary slot, and immediately journals it. It then resolves the
-profile and subscriptions, acquires or resolves declared assets in deterministic
+Acquisition validates the catalog and request and plans candidate placements
+before creating logger/output files or contacting the lease proxy. It leases
+the primary slot and immediately journals it, then resolves the profile and
+subscriptions, acquires or resolves declared assets in deterministic
 registry order, persists each independent lease and resolved asset before
 continuing, admits assets, builds exports, and atomically publishes the runtime
 contract. Each independent Boskos acquisition has its own
@@ -314,7 +415,7 @@ regional lists replace only the specified role, and omitted roles inherit the
 pool default. Region keys are lowercase Azure region names.
 
 Slot-manager resolves policy against the acquired **runtime region**, including
-weighted and runtime-selected pools, and exports the resolved JSON object as
+weighted and open pools, and exports the resolved JSON object as
 `ARO_HCP_E2E_VM_FAMILY_POLICY`. Consumers must not re-resolve it. A pool without
 policy exports `{}` to clear inherited policy. Unset/null whole policy means no
 policy; omitted worker policy prefers DSv6, DSv5, then DASv5, while helpers keep
@@ -399,6 +500,11 @@ All derive capacity from complete catalog demand. See
 for how to run them and
 [`docs/ci/e2e-subscription-onboarding.md`](../../../../docs/ci/e2e-subscription-onboarding.md)
 for onboarding procedures.
+
+Asset-management `--subscription` and `--pool` filters are operational filters,
+not the deprecated acquisition selectors. Their Make targets and quoting remain
+unchanged. `validate-pool-assets` performs Azure reads; `apply-pool-assets`
+mutates Azure resources. Neither is a local smoke test.
 
 ## Future assets
 
